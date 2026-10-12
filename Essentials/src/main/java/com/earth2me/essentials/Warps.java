@@ -1,11 +1,15 @@
 package com.earth2me.essentials;
 
+import static com.earth2me.essentials.I18n.tlLiteral;
+
 import com.earth2me.essentials.adventure.AdventureUtil;
 import com.earth2me.essentials.commands.WarpNotFoundException;
 import com.earth2me.essentials.config.EssentialsConfiguration;
 import com.earth2me.essentials.utils.StringUtil;
+
 import net.ess3.api.InvalidNameException;
 import net.ess3.api.TranslatableException;
+
 import org.bukkit.Location;
 
 import java.io.File;
@@ -18,15 +22,14 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Level;
 
-import static com.earth2me.essentials.I18n.tlLiteral;
-
 public class Warps implements IConf, net.ess3.api.IWarps {
     private final Map<StringIgnoreCase, EssentialsConfiguration> warpPoints = new HashMap<>();
     private final File warpsFolder;
 
     public Warps(final File dataFolder) {
         warpsFolder = new File(dataFolder, "warps");
-        if (!warpsFolder.exists()) {
+        if (!com.earth2me.essentials.config.storage.BackendSession.active()
+                && !warpsFolder.exists()) {
             warpsFolder.mkdirs();
         }
         reloadConfig();
@@ -68,28 +71,35 @@ public class Warps implements IConf, net.ess3.api.IWarps {
 
     @Override
     public void setWarp(final String name, final Location loc) throws Exception {
-        setWarp(null, name, loc);
+        synchronized (com.earth2me.essentials.config.storage.BackendSession.mutationLock()) {
+            setWarp(null, name, loc);
+        }
     }
 
     @Override
     public void setWarp(final IUser user, final String name, final Location loc) throws Exception {
-        final String filename = StringUtil.sanitizeFileName(name);
-        EssentialsConfiguration conf = warpPoints.get(new StringIgnoreCase(name));
-        if (conf == null) {
-            final File confFile = new File(warpsFolder, filename + ".yml");
-            if (confFile.exists()) {
-                throw new TranslatableException("similarWarpExist");
+        synchronized (com.earth2me.essentials.config.storage.BackendSession.mutationLock()) {
+            if (com.earth2me.essentials.config.storage.BackendSession.active()) {
+                com.earth2me.essentials.config.storage.BackendSession.current().requireWritable();
             }
-            conf = new EssentialsConfiguration(confFile);
-            conf.load();
-            warpPoints.put(new StringIgnoreCase(name), conf);
+            final String filename = StringUtil.sanitizeFileName(name);
+            EssentialsConfiguration conf = warpPoints.get(new StringIgnoreCase(name));
+            if (conf == null) {
+                final File confFile = new File(warpsFolder, filename + ".yml");
+                if (com.earth2me.essentials.config.storage.RepositoryFiles.exists(confFile)) {
+                    throw new TranslatableException("similarWarpExist");
+                }
+                conf = new EssentialsConfiguration(confFile);
+                conf.load();
+                warpPoints.put(new StringIgnoreCase(name), conf);
+            }
+            conf.setProperty(null, loc);
+            conf.setProperty("name", name);
+            if (user != null) {
+                conf.setProperty("lastowner", user.getBase().getUniqueId().toString());
+            }
+            conf.save();
         }
-        conf.setProperty(null, loc);
-        conf.setProperty("name", name);
-        if (user != null) {
-            conf.setProperty("lastowner", user.getBase().getUniqueId().toString());
-        }
-        conf.save();
     }
 
     @Override
@@ -108,33 +118,43 @@ public class Warps implements IConf, net.ess3.api.IWarps {
 
     @Override
     public void removeWarp(final String name) throws Exception {
-        final EssentialsConfiguration conf = warpPoints.get(new StringIgnoreCase(name));
-        if (conf == null) {
-            throw new TranslatableException("warpNotExist");
+        synchronized (com.earth2me.essentials.config.storage.BackendSession.mutationLock()) {
+            final EssentialsConfiguration conf = warpPoints.get(new StringIgnoreCase(name));
+            if (conf == null) {
+                throw new TranslatableException("warpNotExist");
+            }
+            if (!com.earth2me.essentials.config.storage.RepositoryFiles.delete(conf.getFile())) {
+                throw new TranslatableException("warpDeleteError");
+            }
+            warpPoints.remove(new StringIgnoreCase(name));
         }
-        if (!conf.getFile().delete()) {
-            throw new TranslatableException("warpDeleteError");
-        }
-        warpPoints.remove(new StringIgnoreCase(name));
     }
 
     @Override
     public final void reloadConfig() {
         warpPoints.clear();
-        final File[] listOfFiles = warpsFolder.listFiles();
+        final File[] listOfFiles =
+                com.earth2me.essentials.config.storage.RepositoryFiles.listFiles(warpsFolder);
         if (listOfFiles != null) {
             for (final File listOfFile : listOfFiles) {
                 final String filename = listOfFile.getName();
-                if (listOfFile.isFile() && filename.endsWith(".yml")) {
+                if (com.earth2me.essentials.config.storage.RepositoryFiles.isFile(listOfFile)
+                        && filename.endsWith(".yml")) {
                     try {
-                        final EssentialsConfiguration conf = new EssentialsConfiguration(listOfFile);
+                        final EssentialsConfiguration conf =
+                                new EssentialsConfiguration(listOfFile);
                         conf.load();
                         final String name = conf.getString("name", null);
                         if (name != null && conf.hasProperty("world")) {
                             warpPoints.put(new StringIgnoreCase(name), conf);
                         }
                     } catch (final Exception ex) {
-                        Essentials.getWrappedLogger().log(Level.WARNING, AdventureUtil.getAdventureFacet().miniToLegacy(tlLiteral("loadWarpError", filename)), ex);
+                        Essentials.getWrappedLogger()
+                                .log(
+                                        Level.WARNING,
+                                        AdventureUtil.getAdventureFacet()
+                                                .miniToLegacy(tlLiteral("loadWarpError", filename)),
+                                        ex);
                     }
                 }
             }

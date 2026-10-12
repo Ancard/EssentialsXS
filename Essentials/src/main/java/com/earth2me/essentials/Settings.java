@@ -1,10 +1,13 @@
 package com.earth2me.essentials;
 
+import static com.earth2me.essentials.I18n.tlLiteral;
+
 import com.earth2me.essentials.adventure.AdventureUtil;
 import com.earth2me.essentials.api.IItemDb;
 import com.earth2me.essentials.commands.IEssentialsCommand;
 import com.earth2me.essentials.config.ConfigurateUtil;
 import com.earth2me.essentials.config.EssentialsConfiguration;
+import com.earth2me.essentials.config.storage.BackendBootstrap;
 import com.earth2me.essentials.signs.EssentialsSign;
 import com.earth2me.essentials.signs.Signs;
 import com.earth2me.essentials.textreader.IText;
@@ -13,11 +16,13 @@ import com.earth2me.essentials.utils.EnumUtil;
 import com.earth2me.essentials.utils.FormatUtil;
 import com.earth2me.essentials.utils.LocationUtil;
 import com.earth2me.essentials.utils.NumberUtil;
+
 import net.ess3.api.IEssentials;
 import net.ess3.provider.KnownCommandsProvider;
 import net.ess3.provider.SyncCommandsProvider;
 import net.essentialsx.api.v2.ChatType;
 import net.kyori.adventure.text.format.NamedTextColor;
+
 import org.bukkit.ChatColor;
 import org.bukkit.Color;
 import org.bukkit.Material;
@@ -52,8 +57,6 @@ import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
-
-import static com.earth2me.essentials.I18n.tlLiteral;
 
 public class Settings implements net.ess3.api.ISettings {
     private static final BigDecimal DEFAULT_MAX_MONEY = new BigDecimal("10000000000000");
@@ -140,7 +143,8 @@ public class Settings implements net.ess3.api.ISettings {
     private TeleportWhenFreePolicy teleportWhenFreePolicy;
     private boolean isCompassTowardsHomePerm;
     private boolean isAllowWorldInBroadcastworld;
-    private String itemDbType; // #EasterEgg - admins can manually switch items provider if they want
+    private String
+            itemDbType; // #EasterEgg - admins can manually switch items provider if they want
     private boolean allowOldIdSigns;
     private boolean isWaterSafe;
     private boolean isSafeUsermap;
@@ -159,8 +163,11 @@ public class Settings implements net.ess3.api.ISettings {
 
     public Settings(final IEssentials ess) {
         this.ess = ess;
-        config = new EssentialsConfiguration(new File(ess.getDataFolder(), "config.yml"), "/config.yml");
+        config =
+                new EssentialsConfiguration(
+                        new File(ess.getDataFolder(), "config.yml"), "/config.yml");
         reloadConfig();
+        BackendBootstrap.requireAvailableBackend(config.getRootNode());
     }
 
     @Override
@@ -209,7 +216,8 @@ public class Settings implements net.ess3.api.ISettings {
         final Set<String> homeList = getMultipleHomes();
         if (homeList != null) {
             for (final String set : homeList) {
-                if (user.isAuthorized("essentials.sethome.multiple." + set) && limit < getHomeLimit(set)) {
+                if (user.isAuthorized("essentials.sethome.multiple." + set)
+                        && limit < getHomeLimit(set)) {
                     limit = getHomeLimit(set);
                 }
             }
@@ -219,7 +227,8 @@ public class Settings implements net.ess3.api.ISettings {
 
     @Override
     public int getHomeLimit(final String set) {
-        return config.getInt("sethome-multiple." + set, config.getInt("sethome-multiple.default", 3));
+        return config.getInt(
+                "sethome-multiple." + set, config.getInt("sethome-multiple.default", 3));
     }
 
     private int _getChatRadius() {
@@ -353,11 +362,13 @@ public class Settings implements net.ess3.api.ISettings {
     }
 
     private void _addAlternativeCommand(final String label, final Command current) {
-        final KnownCommandsProvider knownCommandsProvider = ess.provider(KnownCommandsProvider.class);
+        final KnownCommandsProvider knownCommandsProvider =
+                ess.provider(KnownCommandsProvider.class);
 
         Command cmd = ess.getAlternativeCommandsHandler().getAlternative(label);
         if (cmd == null) {
-            for (final Map.Entry<String, Command> entry : knownCommandsProvider.getKnownCommands().entrySet()) {
+            for (final Map.Entry<String, Command> entry :
+                    knownCommandsProvider.getKnownCommands().entrySet()) {
                 final String[] split = entry.getKey().split(":");
                 if (entry.getValue() != current && split[split.length - 1].equals(label)) {
                     cmd = entry.getValue();
@@ -420,24 +431,39 @@ public class Settings implements net.ess3.api.ISettings {
     }
 
     private Map<String, BigDecimal> _getCommandCosts() {
-        final Map<String, CommentedConfigurationNode> section = ConfigurateUtil.getMap(config.getSection("command-costs"));
+        final Map<String, CommentedConfigurationNode> section =
+                ConfigurateUtil.getMap(config.getSection("command-costs"));
         if (!section.isEmpty()) {
             final Map<String, BigDecimal> newMap = new HashMap<>();
             for (Map.Entry<String, CommentedConfigurationNode> entry : section.entrySet()) {
                 final String command = entry.getKey();
                 final CommentedConfigurationNode node = entry.getValue();
                 if (command.charAt(0) == '/') {
-                    ess.getLogger().warning("Invalid command cost. '" + command + "' should not start with '/'.");
+                    ess.getLogger()
+                            .warning(
+                                    "Invalid command cost. '"
+                                            + command
+                                            + "' should not start with '/'.");
                 }
                 try {
                     if (ConfigurateUtil.isDouble(node)) {
-                        newMap.put(command.toLowerCase(Locale.ENGLISH), BigDecimal.valueOf(node.getDouble()));
+                        newMap.put(
+                                command.toLowerCase(Locale.ENGLISH),
+                                BigDecimal.valueOf(node.getDouble()));
                     } else if (ConfigurateUtil.isInt(node)) {
-                        newMap.put(command.toLowerCase(Locale.ENGLISH), BigDecimal.valueOf(node.getInt()));
+                        newMap.put(
+                                command.toLowerCase(Locale.ENGLISH),
+                                BigDecimal.valueOf(node.getInt()));
                     } else if (ConfigurateUtil.isString(node)) {
                         final String costString = node.getString();
                         //noinspection ConstantConditions
-                        final double cost = Double.parseDouble(costString.trim().replace("$", "").replace(getCurrencySymbol(), "").replaceAll("\\W", ""));
+                        final double cost =
+                                Double.parseDouble(
+                                        costString
+                                                .trim()
+                                                .replace("$", "")
+                                                .replace(getCurrencySymbol(), "")
+                                                .replaceAll("\\W", ""));
                         newMap.put(command.toLowerCase(Locale.ENGLISH), BigDecimal.valueOf(cost));
                     } else {
                         ess.getLogger().warning("Invalid command cost for: " + command);
@@ -468,7 +494,28 @@ public class Settings implements net.ess3.api.ISettings {
                 socialspyCommands.add(c.toLowerCase(Locale.ENGLISH));
             }
         } else {
-            socialspyCommands.addAll(Arrays.asList("msg", "r", "mail", "m", "whisper", "emsg", "t", "tell", "er", "reply", "ereply", "email", "action", "describe", "eme", "eaction", "edescribe", "etell", "ewhisper", "pm"));
+            socialspyCommands.addAll(
+                    Arrays.asList(
+                            "msg",
+                            "r",
+                            "mail",
+                            "m",
+                            "whisper",
+                            "emsg",
+                            "t",
+                            "tell",
+                            "er",
+                            "reply",
+                            "ereply",
+                            "email",
+                            "action",
+                            "describe",
+                            "eme",
+                            "eaction",
+                            "edescribe",
+                            "etell",
+                            "ewhisper",
+                            "pm"));
         }
 
         return socialspyCommands;
@@ -626,7 +673,9 @@ public class Settings implements net.ess3.api.ISettings {
 
     @Override
     public String getChatFormat(final String group, final ChatType chatType) {
-        final String mFormat = chatFormats.getFormat(group, chatType, new ChatFormatConfigSupplier(group, chatType));
+        final String mFormat =
+                chatFormats.getFormat(
+                        group, chatType, new ChatFormatConfigSupplier(group, chatType));
         if (isDebug()) {
             ess.getLogger().info(String.format("Found format '%s' for group '%s'", mFormat, group));
         }
@@ -696,8 +745,10 @@ public class Settings implements net.ess3.api.ISettings {
         }
 
         public String getFormat(String group, ChatType type, Supplier<String> configSupplier) {
-            // With such a large synchronize block, we synchronize a potential config deserialization
-            // It does not matter as it needs to be done. It's even better as we ensure to do it once
+            // With such a large synchronize block, we synchronize a potential config
+            // deserialization
+            // It does not matter as it needs to be done. It's even better as we ensure to do it
+            // once
             // TypedChatFormat is also synchronized
             synchronized (this) {
                 final TypedChatFormat typedChatFormat;
@@ -707,7 +758,8 @@ public class Settings implements net.ess3.api.ISettings {
                     }
                     typedChatFormat = defaultFormat;
                 } else {
-                    typedChatFormat = groupFormats.computeIfAbsent(group, s -> new TypedChatFormat());
+                    typedChatFormat =
+                            groupFormats.computeIfAbsent(group, s -> new TypedChatFormat());
                 }
                 return typedChatFormat.getFormat(type, configSupplier);
             }
@@ -719,7 +771,6 @@ public class Settings implements net.ess3.api.ISettings {
                 groupFormats.clear();
             }
         }
-
     }
 
     private static class TypedChatFormat {
@@ -744,7 +795,6 @@ public class Settings implements net.ess3.api.ISettings {
             }
             return format;
         }
-
     }
 
     @Override
@@ -759,8 +809,11 @@ public class Settings implements net.ess3.api.ISettings {
             return map;
         }
 
-        for (Map.Entry<String, CommentedConfigurationNode> entry : ConfigurateUtil.getMap(section).entrySet()) {
-            map.put(entry.getKey().toLowerCase(), FormatUtil.replaceFormat(entry.getValue().getString()));
+        for (Map.Entry<String, CommentedConfigurationNode> entry :
+                ConfigurateUtil.getMap(section).entrySet()) {
+            map.put(
+                    entry.getKey().toLowerCase(),
+                    FormatUtil.replaceFormat(entry.getValue().getString()));
         }
         return map;
     }
@@ -772,7 +825,11 @@ public class Settings implements net.ess3.api.ISettings {
 
     @Override
     public IText getAnnounceNewPlayerFormat() {
-        return new SimpleTextInput(FormatUtil.replaceFormat(config.getString("newbies.announce-format", "&dWelcome {DISPLAYNAME} to the server!")));
+        return new SimpleTextInput(
+                FormatUtil.replaceFormat(
+                        config.getString(
+                                "newbies.announce-format",
+                                "&dWelcome {DISPLAYNAME} to the server!")));
     }
 
     @Override
@@ -835,14 +892,20 @@ public class Settings implements net.ess3.api.ISettings {
         overriddenCommands = _getOverriddenCommands();
         playerCommands = _getPlayerCommands();
 
-        final KnownCommandsProvider knownCommandsProvider = ess.provider(KnownCommandsProvider.class);
+        final KnownCommandsProvider knownCommandsProvider =
+                ess.provider(KnownCommandsProvider.class);
 
         // This will be late loaded
         if (knownCommandsProvider != null) {
             boolean mapModified = false;
             if (!disabledBukkitCommands.isEmpty()) {
                 if (isDebug()) {
-                    ess.getLogger().log(Level.INFO, "Re-adding " + disabledBukkitCommands.size() + " disabled commands!");
+                    ess.getLogger()
+                            .log(
+                                    Level.INFO,
+                                    "Re-adding "
+                                            + disabledBukkitCommands.size()
+                                            + " disabled commands!");
                 }
                 knownCommandsProvider.getKnownCommands().putAll(disabledBukkitCommands);
                 disabledBukkitCommands.clear();
@@ -851,14 +914,17 @@ public class Settings implements net.ess3.api.ISettings {
 
             if (reloadCount.get() < 2) {
                 // on startup: add plugins again in case they registered commands with the new API
-                // we need to schedule this task before any of the below tasks using _addAlternativeCommand.
-                ess.scheduleSyncDelayedTask(() -> {
-                    for (final Plugin plugin : ess.getServer().getPluginManager().getPlugins()) {
-                        if (plugin.isEnabled()) {
-                            ess.getAlternativeCommandsHandler().addPlugin(plugin);
-                        }
-                    }
-                });
+                // we need to schedule this task before any of the below tasks using
+                // _addAlternativeCommand.
+                ess.scheduleSyncDelayedTask(
+                        () -> {
+                            for (final Plugin plugin :
+                                    ess.getServer().getPluginManager().getPlugins()) {
+                                if (plugin.isEnabled()) {
+                                    ess.getAlternativeCommandsHandler().addPlugin(plugin);
+                                }
+                            }
+                        });
             }
 
             for (final String command : disabledCommands) {
@@ -868,17 +934,24 @@ public class Settings implements net.ess3.api.ISettings {
                     if (isDebug()) {
                         ess.getLogger().log(Level.INFO, "Attempting removal of " + effectiveAlias);
                     }
-                    final Command removed = knownCommandsProvider.getKnownCommands().remove(effectiveAlias);
+                    final Command removed =
+                            knownCommandsProvider.getKnownCommands().remove(effectiveAlias);
                     if (removed != null) {
                         if (isDebug()) {
-                            ess.getLogger().log(Level.INFO, "Adding command " + effectiveAlias + " to disabled map!");
+                            ess.getLogger()
+                                    .log(
+                                            Level.INFO,
+                                            "Adding command "
+                                                    + effectiveAlias
+                                                    + " to disabled map!");
                         }
                         disabledBukkitCommands.put(effectiveAlias, removed);
                     }
 
                     // This is 2 because Settings are reloaded twice in the startup lifecycle
                     if (reloadCount.get() < 2) {
-                        ess.scheduleSyncDelayedTask(() -> _addAlternativeCommand(effectiveAlias, toDisable));
+                        ess.scheduleSyncDelayedTask(
+                                () -> _addAlternativeCommand(effectiveAlias, toDisable));
                     } else {
                         _addAlternativeCommand(effectiveAlias, toDisable);
                     }
@@ -886,7 +959,8 @@ public class Settings implements net.ess3.api.ISettings {
                 }
             }
 
-            final SyncCommandsProvider syncCommandsProvider = ess.provider(SyncCommandsProvider.class);
+            final SyncCommandsProvider syncCommandsProvider =
+                    ess.provider(SyncCommandsProvider.class);
 
             if (mapModified) {
                 if (isDebug()) {
@@ -977,7 +1051,8 @@ public class Settings implements net.ess3.api.ISettings {
         //noinspection deprecation
         final IItemDb itemDb = ess.getItemDb();
         if (itemDb == null || !itemDb.isReady()) {
-            ess.getLogger().log(Level.FINE, "Skipping item spawn blacklist read; item DB not yet loaded.");
+            ess.getLogger()
+                    .log(Level.FINE, "Skipping item spawn blacklist read; item DB not yet loaded.");
             return epItemSpwn;
         }
         for (String itemName : config.getString("item-spawn-blacklist", "").split(",")) {
@@ -989,7 +1064,16 @@ public class Settings implements net.ess3.api.ISettings {
                 final ItemStack iStack = itemDb.get(itemName);
                 epItemSpwn.add(iStack.getType());
             } catch (final Exception ex) {
-                ess.getLogger().log(Level.SEVERE, ess.getAdventureFacet().miniToLegacy(tlLiteral("unknownItemInList", itemName, "item-spawn-blacklist")), ex);
+                ess.getLogger()
+                        .log(
+                                Level.SEVERE,
+                                ess.getAdventureFacet()
+                                        .miniToLegacy(
+                                                tlLiteral(
+                                                        "unknownItemInList",
+                                                        itemName,
+                                                        "item-spawn-blacklist")),
+                                ex);
             }
         }
         return epItemSpwn;
@@ -1017,7 +1101,15 @@ public class Settings implements net.ess3.api.ISettings {
             try {
                 newSigns.add(Signs.valueOf(signName).getSign());
             } catch (final Exception ex) {
-                ess.getLogger().log(Level.SEVERE, ess.getAdventureFacet().miniToLegacy(tlLiteral("unknownItemInList", signName, "enabledSigns")));
+                ess.getLogger()
+                        .log(
+                                Level.SEVERE,
+                                ess.getAdventureFacet()
+                                        .miniToLegacy(
+                                                tlLiteral(
+                                                        "unknownItemInList",
+                                                        signName,
+                                                        "enabledSigns")));
                 continue;
             }
             signsEnabled = true;
@@ -1099,7 +1191,8 @@ public class Settings implements net.ess3.api.ISettings {
     // #easteregg
     @Override
     public boolean isTradeInStacks(final Material type) {
-        return config.getBoolean("trade-in-stacks." + type.toString().toLowerCase().replace("_", ""), false);
+        return config.getBoolean(
+                "trade-in-stacks." + type.toString().toLowerCase().replace("_", ""), false);
     }
 
     public boolean _isEcoDisabled() {
@@ -1145,7 +1238,15 @@ public class Settings implements net.ess3.api.ISettings {
             }
 
             if (mat == null) {
-                ess.getLogger().log(Level.SEVERE, ess.getAdventureFacet().miniToLegacy(tlLiteral("unknownItemInList", itemName, configName)));
+                ess.getLogger()
+                        .log(
+                                Level.SEVERE,
+                                ess.getAdventureFacet()
+                                        .miniToLegacy(
+                                                tlLiteral(
+                                                        "unknownItemInList",
+                                                        itemName,
+                                                        configName)));
             } else {
                 list.add(mat);
             }
@@ -1384,7 +1485,8 @@ public class Settings implements net.ess3.api.ISettings {
     }
 
     public KeepInvPolicy _getVanishingItemsPolicy() {
-        final String value = config.getString("vanishing-items-policy", "keep").toLowerCase(Locale.ENGLISH);
+        final String value =
+                config.getString("vanishing-items-policy", "keep").toLowerCase(Locale.ENGLISH);
         try {
             return KeepInvPolicy.valueOf(value.toUpperCase(Locale.ENGLISH));
         } catch (final IllegalArgumentException e) {
@@ -1398,7 +1500,8 @@ public class Settings implements net.ess3.api.ISettings {
     }
 
     public KeepInvPolicy _getBindingItemsPolicy() {
-        final String value = config.getString("binding-items-policy", "keep").toLowerCase(Locale.ENGLISH);
+        final String value =
+                config.getString("binding-items-policy", "keep").toLowerCase(Locale.ENGLISH);
         try {
             return KeepInvPolicy.valueOf(value.toUpperCase(Locale.ENGLISH));
         } catch (final IllegalArgumentException e) {
@@ -1483,13 +1586,16 @@ public class Settings implements net.ess3.api.ISettings {
 
     @Override
     public EventPriority getRespawnPriority() {
-        final String priority = config.getString("respawn-listener-priority", "normal").toLowerCase(Locale.ENGLISH);
+        final String priority =
+                config.getString("respawn-listener-priority", "normal").toLowerCase(Locale.ENGLISH);
         return getPriority(priority);
     }
 
     @Override
     public EventPriority getSpawnJoinPriority() {
-        final String priority = config.getString("spawn-join-listener-priority", "normal").toLowerCase(Locale.ENGLISH);
+        final String priority =
+                config.getString("spawn-join-listener-priority", "normal")
+                        .toLowerCase(Locale.ENGLISH);
         return getPriority(priority);
     }
 
@@ -1750,9 +1856,13 @@ public class Settings implements net.ess3.api.ISettings {
         if (config.hasProperty("spawn-on-join")) {
             if (config.isList("spawn-on-join")) {
                 return new ArrayList<>(config.getList("spawn-on-join", String.class));
-            } else if (config.isBoolean("spawn-on-join")) { // List of [*] to make all groups go to spawn on join.
-                // This also maintains backwards compatibility with initial impl of single boolean value.
-                return config.getBoolean("spawn-on-join", true) ? Collections.singletonList("*") : def;
+            } else if (config.isBoolean(
+                    "spawn-on-join")) { // List of [*] to make all groups go to spawn on join.
+                // This also maintains backwards compatibility with initial impl of single boolean
+                // value.
+                return config.getBoolean("spawn-on-join", true)
+                        ? Collections.singletonList("*")
+                        : def;
             }
             // Take whatever the value is, convert to string and add it to a list as a single value.
             final String val = config.get("spawn-on-join").toString();
@@ -1807,9 +1917,12 @@ public class Settings implements net.ess3.api.ISettings {
                 if (cmdEntry.startsWith("\\^")) {
                     cmdEntry = cmdEntry.substring(1);
                 }
-                final String cmd = cmdEntry
-                        .replaceAll("\\*", ".*"); // Wildcards are accepted as asterisk * as known universally.
-                pattern = Pattern.compile(cmd + "( .*)?"); // This matches arguments, if present, to "ignore" them from the feature.
+                final String cmd =
+                        cmdEntry.replaceAll(
+                                "\\*",
+                                ".*"); // Wildcards are accepted as asterisk * as known universally.
+                pattern = Pattern.compile(cmd + "( .*)?"); // This matches arguments, if present, to
+                // "ignore" them from the feature.
             }
 
             /* ================================
@@ -1822,12 +1935,14 @@ public class Settings implements net.ess3.api.ISettings {
                 }
             }
             if (!(value instanceof Number)) {
-                ess.getLogger().warning("Command cooldown error: '" + value + "' is not a valid cooldown");
+                ess.getLogger()
+                        .warning("Command cooldown error: '" + value + "' is not a valid cooldown");
                 continue;
             }
             final double cooldown = ((Number) value).doubleValue();
             if (cooldown < 1) {
-                ess.getLogger().warning("Command cooldown with very short " + cooldown + " cooldown.");
+                ess.getLogger()
+                        .warning("Command cooldown with very short " + cooldown + " cooldown.");
             }
 
             result.put(pattern, (long) cooldown * 1000); // convert to milliseconds
@@ -1853,7 +1968,11 @@ public class Settings implements net.ess3.api.ISettings {
                 // Check if label matches current pattern (command-cooldown in config)
                 final boolean matches = entry.getKey().matcher(label).matches();
                 if (isDebug()) {
-                    ess.getLogger().info(String.format("Checking command '%s' against cooldown '%s': %s", label, entry.getKey(), matches));
+                    ess.getLogger()
+                            .info(
+                                    String.format(
+                                            "Checking command '%s' against cooldown '%s': %s",
+                                            label, entry.getKey(), matches));
                 }
 
                 if (matches) {
@@ -1885,16 +2004,19 @@ public class Settings implements net.ess3.api.ISettings {
         final String symbolLocaleString = config.getString("currency-symbol-format-locale", null);
         final DecimalFormatSymbols decimalFormatSymbols;
         if (symbolLocaleString != null) {
-            decimalFormatSymbols = DecimalFormatSymbols.getInstance(Locale.forLanguageTag(symbolLocaleString));
+            decimalFormatSymbols =
+                    DecimalFormatSymbols.getInstance(Locale.forLanguageTag(symbolLocaleString));
         } else {
             // Fallback to the JVM's default locale
             decimalFormatSymbols = DecimalFormatSymbols.getInstance(Locale.US);
         }
 
-        final DecimalFormat currencyFormat = new DecimalFormat(currencyFormatString, decimalFormatSymbols);
+        final DecimalFormat currencyFormat =
+                new DecimalFormat(currencyFormatString, decimalFormatSymbols);
         currencyFormat.setRoundingMode(RoundingMode.FLOOR);
 
-        // Updates NumberUtil#PRETTY_FORMAT field so that all of Essentials can follow a single format.
+        // Updates NumberUtil#PRETTY_FORMAT field so that all of Essentials can follow a single
+        // format.
         NumberUtil.internalSetPrettyFormat(currencyFormat);
         return currencyFormat;
     }
@@ -1920,7 +2042,15 @@ public class Settings implements net.ess3.api.ISettings {
             try {
                 newSigns.add(Signs.valueOf(signName).getSign());
             } catch (final Exception ex) {
-                ess.getLogger().log(Level.SEVERE, ess.getAdventureFacet().miniToLegacy(tlLiteral("unknownItemInList", signName, "unprotected-sign-names")));
+                ess.getLogger()
+                        .log(
+                                Level.SEVERE,
+                                ess.getAdventureFacet()
+                                        .miniToLegacy(
+                                                tlLiteral(
+                                                        "unknownItemInList",
+                                                        signName,
+                                                        "unprotected-sign-names")));
             }
         }
         return newSigns;
@@ -1997,7 +2127,8 @@ public class Settings implements net.ess3.api.ISettings {
     }
 
     private List<String> _getDefaultEnabledConfirmCommands() {
-        final List<String> commands = config.getList("default-enabled-confirm-commands", String.class);
+        final List<String> commands =
+                config.getList("default-enabled-confirm-commands", String.class);
         commands.replaceAll(String::toLowerCase);
         return commands;
     }
@@ -2014,16 +2145,23 @@ public class Settings implements net.ess3.api.ISettings {
 
     private TeleportWhenFreePolicy _getTeleportWhenFreePolicy() {
         if (config.hasProperty("teleport-back-when-freed-from-jail")) {
-            return config.getBoolean("teleport-back-when-freed-from-jail", true) ? TeleportWhenFreePolicy.BACK : TeleportWhenFreePolicy.OFF;
+            return config.getBoolean("teleport-back-when-freed-from-jail", true)
+                    ? TeleportWhenFreePolicy.BACK
+                    : TeleportWhenFreePolicy.OFF;
         }
 
         if (config.hasProperty("teleport-when-freed")) {
             // snakeyaml more like cursedyaml
-            final String value = config.getString("teleport-when-freed", "back").replace("false", "off");
+            final String value =
+                    config.getString("teleport-when-freed", "back").replace("false", "off");
             try {
                 return TeleportWhenFreePolicy.valueOf(value.toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
-                throw new RuntimeException("Invalid value \"" + value + "\" for config option \"teleport-when-freed\"!", e);
+                throw new RuntimeException(
+                        "Invalid value \""
+                                + value
+                                + "\" for config option \"teleport-when-freed\"!",
+                        e);
             }
         }
 
@@ -2118,13 +2256,16 @@ public class Settings implements net.ess3.api.ISettings {
     private Set<Predicate<String>> _getNickBlacklist() {
         final Set<Predicate<String>> blacklist = new HashSet<>();
 
-        config.getList("nick-blacklist", String.class).forEach(entry -> {
-            try {
-                blacklist.add(Pattern.compile(entry).asPredicate());
-            } catch (final PatternSyntaxException e) {
-                ess.getLogger().warning("Invalid nickname blacklist regex: " + entry);
-            }
-        });
+        config.getList("nick-blacklist", String.class)
+                .forEach(
+                        entry -> {
+                            try {
+                                blacklist.add(Pattern.compile(entry).asPredicate());
+                            } catch (final PatternSyntaxException e) {
+                                ess.getLogger()
+                                        .warning("Invalid nickname blacklist regex: " + entry);
+                            }
+                        });
 
         return blacklist;
     }
@@ -2196,7 +2337,8 @@ public class Settings implements net.ess3.api.ISettings {
 
         for (final String multiplierPerm : multiplierPerms) {
             if (user.isAuthorized("essentials.sell.multiplier." + multiplierPerm)) {
-                final BigDecimal value = config.getBigDecimal("sell-multipliers." + multiplierPerm, BigDecimal.ZERO);
+                final BigDecimal value =
+                        config.getBigDecimal("sell-multipliers." + multiplierPerm, BigDecimal.ZERO);
                 if (value.compareTo(multiplier) > 0) {
                     multiplier = value;
                 }
@@ -2243,7 +2385,9 @@ public class Settings implements net.ess3.api.ISettings {
 
     private String _getTagColor(final String color) {
         try {
-            if (color.startsWith("#") && color.length() == 7 && NumberUtil.isHexadecimal(color.substring(1))) {
+            if (color.startsWith("#")
+                    && color.length() == 7
+                    && NumberUtil.isHexadecimal(color.substring(1))) {
                 Color.fromRGB(Integer.decode(color));
                 return color;
             }
@@ -2252,7 +2396,9 @@ public class Settings implements net.ess3.api.ISettings {
                 return Objects.requireNonNull(AdventureUtil.fromChar(color.charAt(0))).toString();
             }
 
-            return Objects.requireNonNull(NamedTextColor.NAMES.value(color.toLowerCase(Locale.ENGLISH))).toString();
+            return Objects.requireNonNull(
+                            NamedTextColor.NAMES.value(color.toLowerCase(Locale.ENGLISH)))
+                    .toString();
         } catch (NullPointerException | IllegalArgumentException ignored) {
         }
         return null;

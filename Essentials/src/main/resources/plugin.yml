@@ -621,6 +621,9 @@ commands:
     aliases: [eprice,price,eworth]
 
 permissions:
+  essentials.backend:
+    description: Allows access to backend administration and maintenance.
+    default: op
   essentials.*:
     default: op
     description: Give players with op everything by default

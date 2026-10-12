@@ -23,64 +23,103 @@ public class UsermapCommand extends EssentialsTreeNode {
     }
 
     @Override
-    protected void run(final CommandSource sender, final String commandLabel, final String[] args) throws Exception {
+    protected void run(final CommandSource sender, final String commandLabel, final String[] args)
+            throws Exception {
         if (!sender.isAuthorized("essentials.usermap")) {
             return;
         }
 
         final ModernUserMap userMap = (ModernUserMap) ess.getUsers();
-        sender.sendTl("usermapSize", userMap.getCachedCount(), userMap.getUserCount(), ess.getSettings().getMaxUserCacheCount());
+        sender.sendTl(
+                "usermapSize",
+                userMap.getCachedCount(),
+                userMap.getUserCount(),
+                ess.getSettings().getMaxUserCacheCount());
         if (args.length > 0) {
             if (args[0].equals("full")) {
                 for (final Map.Entry<String, UUID> entry : userMap.getNameCache().entrySet()) {
                     sender.sendTl("usermapEntry", entry.getKey(), entry.getValue().toString());
                 }
             } else if (args[0].equals("purge")) {
+                if (com.earth2me.essentials.config.storage.BackendSession.active()) {
+                    sender.sendMessage(
+                            "SQL identity indexes are transactional; use backend check and export"
+                                    + " for maintenance.");
+                    return;
+                }
                 final boolean seppuku = args.length > 1 && args[1].equals("iknowwhatimdoing");
 
                 sender.sendTl("usermapPurge", String.valueOf(seppuku));
 
                 final Set<UUID> uuids = new HashSet<>(ess.getUsers().getAllUserUUIDs());
-                ess.runTaskAsynchronously(() -> {
-                    final File userdataFolder = new File(ess.getDataFolder(), "userdata");
-                    final File backupFolder = new File(ess.getDataFolder(), "userdata-npc-backup-boogaloo-" + System.currentTimeMillis());
+                ess.runTaskAsynchronously(
+                        () -> {
+                            final File userdataFolder = new File(ess.getDataFolder(), "userdata");
+                            final File backupFolder =
+                                    new File(
+                                            ess.getDataFolder(),
+                                            "userdata-npc-backup-boogaloo-"
+                                                    + System.currentTimeMillis());
 
-                    if (!userdataFolder.isDirectory()) {
-                        ess.getLogger().warning("Missing userdata folder, aborting usermap purge.");
-                        return;
-                    }
+                            if (!userdataFolder.isDirectory()) {
+                                ess.getLogger()
+                                        .warning(
+                                                "Missing userdata folder, aborting usermap purge.");
+                                return;
+                            }
 
-                    if (seppuku && !backupFolder.mkdir()) {
-                        ess.getLogger().warning("Unable to create backup folder, aborting usermap purge.");
-                        return;
-                    }
+                            if (seppuku && !backupFolder.mkdir()) {
+                                ess.getLogger()
+                                        .warning(
+                                                "Unable to create backup folder, aborting usermap"
+                                                        + " purge.");
+                                return;
+                            }
 
-                    int total = 0;
-                    final File[] files = userdataFolder.listFiles(EssentialsUpgrade.YML_FILTER);
-                    if (files != null) {
-                        for (final File file : files) {
-                            try {
-                                final String fileName = file.getName();
-                                final UUID uuid = UUID.fromString(fileName.substring(0, fileName.length() - 4));
-                                if (!uuids.contains(uuid)) {
-                                    total++;
-                                    ess.getLogger().warning("Found orphaned userdata file: " + file.getName());
-                                    if (seppuku) {
-                                        try {
-                                            com.google.common.io.Files.move(file, new File(backupFolder, file.getName()));
-                                        } catch (IOException e) {
-                                            ess.getLogger().log(Level.WARNING, "Unable to move orphaned userdata file: " + file.getName(), e);
+                            int total = 0;
+                            final File[] files =
+                                    userdataFolder.listFiles(EssentialsUpgrade.YML_FILTER);
+                            if (files != null) {
+                                for (final File file : files) {
+                                    try {
+                                        final String fileName = file.getName();
+                                        final UUID uuid =
+                                                UUID.fromString(
+                                                        fileName.substring(
+                                                                0, fileName.length() - 4));
+                                        if (!uuids.contains(uuid)) {
+                                            total++;
+                                            ess.getLogger()
+                                                    .warning(
+                                                            "Found orphaned userdata file: "
+                                                                    + file.getName());
+                                            if (seppuku) {
+                                                try {
+                                                    com.google.common.io.Files.move(
+                                                            file,
+                                                            new File(backupFolder, file.getName()));
+                                                } catch (IOException e) {
+                                                    ess.getLogger()
+                                                            .log(
+                                                                    Level.WARNING,
+                                                                    "Unable to move orphaned"
+                                                                            + " userdata file: "
+                                                                            + file.getName(),
+                                                                    e);
+                                                }
+                                            }
                                         }
+                                    } catch (IllegalArgumentException ignored) {
                                     }
                                 }
-                            } catch (IllegalArgumentException ignored) {
                             }
-                        }
-                    }
-                    ess.getLogger().info("Found " + total + " orphaned userdata files.");
-                });
+                            ess.getLogger().info("Found " + total + " orphaned userdata files.");
+                        });
             } else if (args[0].equalsIgnoreCase("cache")) {
-                sender.sendTl("usermapKnown", ess.getUsers().getAllUserUUIDs().size(), ess.getUsers().getNameCache().size());
+                sender.sendTl(
+                        "usermapKnown",
+                        ess.getUsers().getAllUserUUIDs().size(),
+                        ess.getUsers().getNameCache().size());
             } else {
                 try {
                     final UUID uuid = UUID.fromString(args[0]);
@@ -91,7 +130,10 @@ public class UsermapCommand extends EssentialsTreeNode {
                     }
                 } catch (IllegalArgumentException ignored) {
                     final String sanitizedName = userMap.getSanitizedName(args[0]);
-                    sender.sendTl("usermapEntry", sanitizedName, userMap.getNameCache().get(sanitizedName).toString());
+                    sender.sendTl(
+                            "usermapEntry",
+                            sanitizedName,
+                            userMap.getNameCache().get(sanitizedName).toString());
                 }
             }
         }

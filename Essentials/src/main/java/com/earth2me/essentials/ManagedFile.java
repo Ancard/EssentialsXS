@@ -1,5 +1,7 @@
 package com.earth2me.essentials;
 
+import static com.earth2me.essentials.I18n.tlLiteral;
+
 import net.ess3.api.IEssentials;
 
 import java.io.BufferedInputStream;
@@ -22,14 +24,38 @@ import java.util.Collections;
 import java.util.List;
 import java.util.logging.Level;
 
-import static com.earth2me.essentials.I18n.tlLiteral;
-
 public class ManagedFile {
     private static final int BUFFERSIZE = 1024 * 8;
     private final transient File file;
 
     public ManagedFile(final String filename, final IEssentials ess) {
         file = new File(ess.getDataFolder(), filename);
+        if (com.earth2me.essentials.config.storage.RepositoryFiles.managed(file)) {
+            if (!com.earth2me.essentials.config.storage.RepositoryFiles.exists(file)) {
+                try (java.io.InputStream stream =
+                        ManagedFile.class.getResourceAsStream("/" + filename)) {
+                    if (stream == null) {
+                        throw new IOException("Missing text template.");
+                    }
+                    final java.io.ByteArrayOutputStream output =
+                            new java.io.ByteArrayOutputStream();
+                    final byte[] buffer = new byte[8192];
+                    int count;
+                    while ((count = stream.read(buffer)) != -1) {
+                        output.write(buffer, 0, count);
+                    }
+                    com.earth2me.essentials.config.storage.BackendSession.current()
+                            .write(
+                                    "core/" + filename,
+                                    new String(
+                                            output.toByteArray(),
+                                            java.nio.charset.StandardCharsets.UTF_8));
+                } catch (IOException e) {
+                    throw new IllegalStateException("Cannot initialize text resource.", e);
+                }
+            }
+            return;
+        }
 
         if (file.exists()) {
             try {
@@ -45,15 +71,23 @@ public class ManagedFile {
             try {
                 copyResourceAscii("/" + filename, file);
             } catch (final IOException ex) {
-                Essentials.getWrappedLogger().log(Level.SEVERE, ess.getAdventureFacet().miniToLegacy(tlLiteral("itemsCsvNotLoaded", filename)), ex);
+                Essentials.getWrappedLogger()
+                        .log(
+                                Level.SEVERE,
+                                ess.getAdventureFacet()
+                                        .miniToLegacy(tlLiteral("itemsCsvNotLoaded", filename)),
+                                ex);
             }
         }
     }
 
-    public static void copyResourceAscii(final String resourceName, final File file) throws IOException {
-        try (final InputStreamReader reader = new InputStreamReader(ManagedFile.class.getResourceAsStream(resourceName))) {
+    public static void copyResourceAscii(final String resourceName, final File file)
+            throws IOException {
+        try (final InputStreamReader reader =
+                new InputStreamReader(ManagedFile.class.getResourceAsStream(resourceName))) {
             final MessageDigest digest = getDigest();
-            try (final DigestOutputStream digestStream = new DigestOutputStream(new FileOutputStream(file), digest)) {
+            try (final DigestOutputStream digestStream =
+                    new DigestOutputStream(new FileOutputStream(file), digest)) {
                 try (final OutputStreamWriter writer = new OutputStreamWriter(digestStream)) {
                     final char[] buffer = new char[BUFFERSIZE];
                     do {
@@ -75,7 +109,8 @@ public class ManagedFile {
         }
     }
 
-    public static boolean checkForVersion(final File file, final String version) throws IOException {
+    public static boolean checkForVersion(final File file, final String version)
+            throws IOException {
         if (file.length() < 33) {
             return false;
         }
@@ -83,7 +118,11 @@ public class ManagedFile {
             final byte[] buffer = new byte[(int) file.length()];
             int position = 0;
             do {
-                final int length = bis.read(buffer, position, Math.min((int) file.length() - position, BUFFERSIZE));
+                final int length =
+                        bis.read(
+                                buffer,
+                                position,
+                                Math.min((int) file.length() - position, BUFFERSIZE));
                 if (length < 0) {
                     break;
                 }
@@ -104,7 +143,8 @@ public class ManagedFile {
                         if (!versioncheck.equalsIgnoreCase(version)) {
                             bais.reset();
                             final MessageDigest digest = getDigest();
-                            try (final DigestInputStream digestStream = new DigestInputStream(bais, digest)) {
+                            try (final DigestInputStream digestStream =
+                                    new DigestInputStream(bais, digest)) {
                                 final byte[] bytes = new byte[(int) file.length() - 33];
                                 digestStream.read(bytes);
                                 final BigInteger correct = new BigInteger(hash, 16);
@@ -112,7 +152,13 @@ public class ManagedFile {
                                 if (correct.equals(test)) {
                                     return true;
                                 } else {
-                                    Essentials.getWrappedLogger().warning("File " + file.toString() + " has been modified by user and file version differs, please update the file manually.");
+                                    Essentials.getWrappedLogger()
+                                            .warning(
+                                                    "File "
+                                                            + file.toString()
+                                                            + " has been modified by user and file"
+                                                            + " version differs, please update the"
+                                                            + " file manually.");
                                 }
                             }
                         }
@@ -132,6 +178,18 @@ public class ManagedFile {
     }
 
     public List<String> getLines() {
+        if (com.earth2me.essentials.config.storage.RepositoryFiles.managed(file)) {
+            try {
+                return java.util.Arrays.asList(
+                        new String(
+                                        com.earth2me.essentials.config.storage.RepositoryText.bytes(
+                                                file),
+                                        java.nio.charset.StandardCharsets.UTF_8)
+                                .split("\\R"));
+            } catch (IOException e) {
+                throw new IllegalStateException("Cannot read text resource.", e);
+            }
+        }
         try {
             try (final BufferedReader reader = new BufferedReader(new FileReader(file))) {
                 final List<String> lines = new ArrayList<>();

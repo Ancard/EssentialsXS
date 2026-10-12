@@ -8,9 +8,11 @@ import com.earth2me.essentials.config.EssentialsUserConfiguration;
 import com.earth2me.essentials.utils.NumberUtil;
 import com.earth2me.essentials.utils.StringUtil;
 import com.google.common.base.Charsets;
+
 import net.ess3.api.MaxMoneyException;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.economy.EconomyResponse;
+
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 
@@ -23,15 +25,19 @@ import java.util.UUID;
 import java.util.logging.Level;
 
 /**
- * A goddamn Vault adapter, what more do you want?
- * Provides access to the EssentialsX economy for plugins that use the Vault API.
- * <p>
- * Developer note: for accessing Essentials/Vault economy functions from EssentialsX code, see
+ * A goddamn Vault adapter, what more do you want? Provides access to the EssentialsX economy for
+ * plugins that use the Vault API.
+ *
+ * <p>Developer note: for accessing Essentials/Vault economy functions from EssentialsX code, see
  * {@link com.earth2me.essentials.User}.
  */
 public class VaultEconomyProvider implements Economy {
-    private static final String WARN_NPC_RECREATE_1 = "Account creation was requested for NPC user {0}, but an account file with UUID {1} already exists.";
-    private static final String WARN_NPC_RECREATE_2 = "Essentials will create a new account as requested by the other plugin, but this is almost certainly a bug and should be reported.";
+    private static final String WARN_NPC_RECREATE_1 =
+            "Account creation was requested for NPC user {0}, but an account file with UUID {1}"
+                    + " already exists.";
+    private static final String WARN_NPC_RECREATE_2 =
+            "Essentials will create a new account as requested by the other plugin, but this is"
+                    + " almost certainly a bug and should be reported.";
 
     private final Essentials ess;
 
@@ -41,7 +47,10 @@ public class VaultEconomyProvider implements Economy {
 
     @Override
     public boolean isEnabled() {
-        return ess.isEnabled();
+        return ess.isEnabled()
+                && (com.earth2me.essentials.config.storage.BackendSession.current() == null
+                        || com.earth2me.essentials.config.storage.BackendSession.current()
+                                .available());
     }
 
     @Override
@@ -61,7 +70,8 @@ public class VaultEconomyProvider implements Economy {
 
     @Override
     public String format(double amount) {
-        return ess.getAdventureFacet().miniToLegacy(NumberUtil.displayCurrency(BigDecimal.valueOf(amount), ess));
+        return ess.getAdventureFacet()
+                .miniToLegacy(NumberUtil.displayCurrency(BigDecimal.valueOf(amount), ess));
     }
 
     @Override
@@ -80,8 +90,11 @@ public class VaultEconomyProvider implements Economy {
         if (com.earth2me.essentials.api.Economy.playerExists(playerName)) {
             return true;
         }
-        // We may not have the player name in the usermap, let's double check an NPC account with this name doesn't exist.
-        return com.earth2me.essentials.api.Economy.playerExists(UUID.nameUUIDFromBytes(("NPC:" + StringUtil.safeString(playerName)).getBytes(Charsets.UTF_8)));
+        // We may not have the player name in the usermap, let's double check an NPC account with
+        // this name doesn't exist.
+        return com.earth2me.essentials.api.Economy.playerExists(
+                UUID.nameUUIDFromBytes(
+                        ("NPC:" + StringUtil.safeString(playerName)).getBytes(Charsets.UTF_8)));
     }
 
     @Override
@@ -105,6 +118,7 @@ public class VaultEconomyProvider implements Economy {
         try {
             return getDoubleValue(com.earth2me.essentials.api.Economy.getMoneyExact(playerName));
         } catch (UserDoesNotExistException e) {
+            requireAvailableStorage();
             createPlayerAccount(playerName);
             return getDoubleValue(ess.getSettings().getStartingBalance());
         }
@@ -113,8 +127,10 @@ public class VaultEconomyProvider implements Economy {
     @Override
     public double getBalance(OfflinePlayer player) {
         try {
-            return getDoubleValue(com.earth2me.essentials.api.Economy.getMoneyExact(player.getUniqueId()));
+            return getDoubleValue(
+                    com.earth2me.essentials.api.Economy.getMoneyExact(player.getUniqueId()));
         } catch (UserDoesNotExistException e) {
+            requireAvailableStorage();
             createPlayerAccount(player);
             return getDoubleValue(ess.getSettings().getStartingBalance());
         }
@@ -128,6 +144,13 @@ public class VaultEconomyProvider implements Economy {
             amount = Math.nextAfter(amount, Double.NEGATIVE_INFINITY);
         }
         return amount;
+    }
+
+    private void requireAvailableStorage() {
+        if (com.earth2me.essentials.config.storage.BackendSession.current() != null
+                && !com.earth2me.essentials.config.storage.BackendSession.current().available()) {
+            throw new IllegalStateException("Essentials persistent storage is unavailable.");
+        }
     }
 
     @Override
@@ -153,7 +176,8 @@ public class VaultEconomyProvider implements Economy {
     @Override
     public boolean has(OfflinePlayer player, double amount) {
         try {
-            return com.earth2me.essentials.api.Economy.hasEnough(player.getUniqueId(), BigDecimal.valueOf(amount));
+            return com.earth2me.essentials.api.Economy.hasEnough(
+                    player.getUniqueId(), BigDecimal.valueOf(amount));
         } catch (UserDoesNotExistException e) {
             return false;
         }
@@ -173,42 +197,79 @@ public class VaultEconomyProvider implements Economy {
     @Override
     public EconomyResponse withdrawPlayer(String playerName, double amount) {
         if (playerName == null) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Player name cannot be null!");
+            return new EconomyResponse(
+                    0, 0, EconomyResponse.ResponseType.FAILURE, "Player name cannot be null!");
         }
         if (amount < 0) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Cannot withdraw negative funds!");
+            return new EconomyResponse(
+                    0, 0, EconomyResponse.ResponseType.FAILURE, "Cannot withdraw negative funds!");
         }
 
         try {
             com.earth2me.essentials.api.Economy.subtract(playerName, amount);
-            return new EconomyResponse(amount, getBalance(playerName), EconomyResponse.ResponseType.SUCCESS, null);
+            return new EconomyResponse(
+                    amount, getBalance(playerName), EconomyResponse.ResponseType.SUCCESS, null);
         } catch (UserDoesNotExistException e) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "User does not exist!");
+            return new EconomyResponse(
+                    0, 0, EconomyResponse.ResponseType.FAILURE, "User does not exist!");
+        } catch (IllegalStateException e) {
+            return new EconomyResponse(
+                    0,
+                    0,
+                    EconomyResponse.ResponseType.FAILURE,
+                    "Essentials persistent storage is unavailable.");
         } catch (NoLoanPermittedException e) {
-            return new EconomyResponse(0, getBalance(playerName), EconomyResponse.ResponseType.FAILURE, "Loan was not permitted!");
+            return new EconomyResponse(
+                    0,
+                    getBalance(playerName),
+                    EconomyResponse.ResponseType.FAILURE,
+                    "Loan was not permitted!");
         } catch (MaxMoneyException e) {
-            return new EconomyResponse(0, getBalance(playerName), EconomyResponse.ResponseType.FAILURE, "User goes over maximum money limit!");
+            return new EconomyResponse(
+                    0,
+                    getBalance(playerName),
+                    EconomyResponse.ResponseType.FAILURE,
+                    "User goes over maximum money limit!");
         }
     }
 
     @Override
     public EconomyResponse withdrawPlayer(OfflinePlayer player, double amount) {
         if (player == null) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Player cannot be null!");
+            return new EconomyResponse(
+                    0, 0, EconomyResponse.ResponseType.FAILURE, "Player cannot be null!");
         }
         if (amount < 0) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Cannot withdraw negative funds!");
+            return new EconomyResponse(
+                    0, 0, EconomyResponse.ResponseType.FAILURE, "Cannot withdraw negative funds!");
         }
 
         try {
-            com.earth2me.essentials.api.Economy.subtract(player.getUniqueId(), BigDecimal.valueOf(amount));
-            return new EconomyResponse(amount, getBalance(player), EconomyResponse.ResponseType.SUCCESS, null);
+            com.earth2me.essentials.api.Economy.subtract(
+                    player.getUniqueId(), BigDecimal.valueOf(amount));
+            return new EconomyResponse(
+                    amount, getBalance(player), EconomyResponse.ResponseType.SUCCESS, null);
         } catch (UserDoesNotExistException e) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "User does not exist!");
+            return new EconomyResponse(
+                    0, 0, EconomyResponse.ResponseType.FAILURE, "User does not exist!");
+        } catch (IllegalStateException e) {
+            return new EconomyResponse(
+                    0,
+                    0,
+                    EconomyResponse.ResponseType.FAILURE,
+                    "Essentials persistent storage is unavailable.");
         } catch (NoLoanPermittedException e) {
-            return new EconomyResponse(0, getBalance(player), EconomyResponse.ResponseType.FAILURE, "Loan was not permitted!");
+            return new EconomyResponse(
+                    0,
+                    getBalance(player),
+                    EconomyResponse.ResponseType.FAILURE,
+                    "Loan was not permitted!");
         } catch (MaxMoneyException e) {
-            return new EconomyResponse(0, getBalance(player), EconomyResponse.ResponseType.FAILURE, "User goes over maximum money limit!");
+            return new EconomyResponse(
+                    0,
+                    getBalance(player),
+                    EconomyResponse.ResponseType.FAILURE,
+                    "User goes over maximum money limit!");
         }
     }
 
@@ -226,42 +287,79 @@ public class VaultEconomyProvider implements Economy {
     @Override
     public EconomyResponse depositPlayer(String playerName, double amount) {
         if (playerName == null) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Player name can not be null.");
+            return new EconomyResponse(
+                    0, 0, EconomyResponse.ResponseType.FAILURE, "Player name can not be null.");
         }
         if (amount < 0) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Cannot deposit negative funds");
+            return new EconomyResponse(
+                    0, 0, EconomyResponse.ResponseType.FAILURE, "Cannot deposit negative funds");
         }
 
         try {
             com.earth2me.essentials.api.Economy.add(playerName, amount);
-            return new EconomyResponse(amount, getBalance(playerName), EconomyResponse.ResponseType.SUCCESS, null);
+            return new EconomyResponse(
+                    amount, getBalance(playerName), EconomyResponse.ResponseType.SUCCESS, null);
         } catch (UserDoesNotExistException e) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "User does not exist!");
+            return new EconomyResponse(
+                    0, 0, EconomyResponse.ResponseType.FAILURE, "User does not exist!");
+        } catch (IllegalStateException e) {
+            return new EconomyResponse(
+                    0,
+                    0,
+                    EconomyResponse.ResponseType.FAILURE,
+                    "Essentials persistent storage is unavailable.");
         } catch (NoLoanPermittedException e) {
-            return new EconomyResponse(0, getBalance(playerName), EconomyResponse.ResponseType.FAILURE, "Loan was not permitted!");
+            return new EconomyResponse(
+                    0,
+                    getBalance(playerName),
+                    EconomyResponse.ResponseType.FAILURE,
+                    "Loan was not permitted!");
         } catch (MaxMoneyException e) {
-            return new EconomyResponse(0, getBalance(playerName), EconomyResponse.ResponseType.FAILURE, "User goes over maximum money limit!");
+            return new EconomyResponse(
+                    0,
+                    getBalance(playerName),
+                    EconomyResponse.ResponseType.FAILURE,
+                    "User goes over maximum money limit!");
         }
     }
 
     @Override
     public EconomyResponse depositPlayer(OfflinePlayer player, double amount) {
         if (player == null) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Player can not be null.");
+            return new EconomyResponse(
+                    0, 0, EconomyResponse.ResponseType.FAILURE, "Player can not be null.");
         }
         if (amount < 0) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Cannot deposit negative funds");
+            return new EconomyResponse(
+                    0, 0, EconomyResponse.ResponseType.FAILURE, "Cannot deposit negative funds");
         }
 
         try {
-            com.earth2me.essentials.api.Economy.add(player.getUniqueId(), BigDecimal.valueOf(amount));
-            return new EconomyResponse(amount, getBalance(player), EconomyResponse.ResponseType.SUCCESS, null);
+            com.earth2me.essentials.api.Economy.add(
+                    player.getUniqueId(), BigDecimal.valueOf(amount));
+            return new EconomyResponse(
+                    amount, getBalance(player), EconomyResponse.ResponseType.SUCCESS, null);
         } catch (UserDoesNotExistException e) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "User does not exist!");
+            return new EconomyResponse(
+                    0, 0, EconomyResponse.ResponseType.FAILURE, "User does not exist!");
+        } catch (IllegalStateException e) {
+            return new EconomyResponse(
+                    0,
+                    0,
+                    EconomyResponse.ResponseType.FAILURE,
+                    "Essentials persistent storage is unavailable.");
         } catch (NoLoanPermittedException e) {
-            return new EconomyResponse(0, getBalance(player), EconomyResponse.ResponseType.FAILURE, "Loan was not permitted!");
+            return new EconomyResponse(
+                    0,
+                    getBalance(player),
+                    EconomyResponse.ResponseType.FAILURE,
+                    "Loan was not permitted!");
         } catch (MaxMoneyException e) {
-            return new EconomyResponse(0, getBalance(player), EconomyResponse.ResponseType.FAILURE, "User goes over maximum money limit!");
+            return new EconomyResponse(
+                    0,
+                    getBalance(player),
+                    EconomyResponse.ResponseType.FAILURE,
+                    "User goes over maximum money limit!");
         }
     }
 
@@ -300,32 +398,48 @@ public class VaultEconomyProvider implements Economy {
                 }
             }
             final File npcFile = new File(folder, player.getUniqueId() + ".yml");
-            if (npcFile.exists()) {
-                ess.getLogger().log(Level.SEVERE, MessageFormat.format(WARN_NPC_RECREATE_1, player.getName(), player.getUniqueId().toString()), new RuntimeException());
+            if (com.earth2me.essentials.config.storage.RepositoryFiles.exists(npcFile)) {
+                ess.getLogger()
+                        .log(
+                                Level.SEVERE,
+                                MessageFormat.format(
+                                        WARN_NPC_RECREATE_1,
+                                        player.getName(),
+                                        player.getUniqueId().toString()),
+                                new RuntimeException());
                 ess.getLogger().log(Level.SEVERE, WARN_NPC_RECREATE_2);
             }
-            final EssentialsUserConfiguration npcConfig = new EssentialsUserConfiguration(player.getName(), player.getUniqueId(), npcFile);
+            final EssentialsUserConfiguration npcConfig =
+                    new EssentialsUserConfiguration(
+                            player.getName(), player.getUniqueId(), npcFile);
             npcConfig.load();
             npcConfig.setProperty("npc", true);
             npcConfig.setProperty("last-account-name", player.getName());
             npcConfig.setProperty("money", ess.getSettings().getStartingBalance());
-            npcConfig.blockingSave();
+            if (com.earth2me.essentials.config.storage.RepositoryFiles.managed(npcFile)) {
+                npcConfig.save();
+            } else {
+                npcConfig.blockingSave();
+            }
             // This will load the NPC into the UserMap + UUID cache
             ess.getUsers().addCachedNpcName(player.getUniqueId(), player.getName());
             ess.getUsers().getUser(player.getUniqueId());
             return true;
         }
 
-        // Loading a v4 UUID that we somehow didn't track, mark it as a normal player and hope for the best, vault sucks :/
+        // Loading a v4 UUID that we somehow didn't track, mark it as a normal player and hope for
+        // the best, vault sucks :/
         if (ess.getSettings().isDebug()) {
-            ess.getLogger().info("Vault requested a player account creation for a v4 UUID: " + player);
+            ess.getLogger()
+                    .info("Vault requested a player account creation for a v4 UUID: " + player);
         }
 
         final Player userPlayer;
         if (player instanceof Player) {
             userPlayer = (Player) player;
         } else {
-            final OfflinePlayerStub essPlayer = new OfflinePlayerStub(player.getUniqueId(), ess.getServer());
+            final OfflinePlayerStub essPlayer =
+                    new OfflinePlayerStub(player.getUniqueId(), ess.getServer());
             essPlayer.setName(player.getName());
             userPlayer = essPlayer;
         }
@@ -345,57 +459,101 @@ public class VaultEconomyProvider implements Economy {
 
     @Override
     public EconomyResponse createBank(String name, String player) {
-        return new EconomyResponse(0, 0, EconomyResponse.ResponseType.NOT_IMPLEMENTED, "EssentialsX does not support bank accounts!");
+        return new EconomyResponse(
+                0,
+                0,
+                EconomyResponse.ResponseType.NOT_IMPLEMENTED,
+                "EssentialsX does not support bank accounts!");
     }
 
     @Override
     public EconomyResponse createBank(String name, OfflinePlayer player) {
-        return new EconomyResponse(0, 0, EconomyResponse.ResponseType.NOT_IMPLEMENTED, "EssentialsX does not support bank accounts!");
+        return new EconomyResponse(
+                0,
+                0,
+                EconomyResponse.ResponseType.NOT_IMPLEMENTED,
+                "EssentialsX does not support bank accounts!");
     }
 
     @Override
     public EconomyResponse deleteBank(String name) {
-        return new EconomyResponse(0, 0, EconomyResponse.ResponseType.NOT_IMPLEMENTED, "EssentialsX does not support bank accounts!");
+        return new EconomyResponse(
+                0,
+                0,
+                EconomyResponse.ResponseType.NOT_IMPLEMENTED,
+                "EssentialsX does not support bank accounts!");
     }
 
     @Override
     public EconomyResponse bankBalance(String name) {
-        return new EconomyResponse(0, 0, EconomyResponse.ResponseType.NOT_IMPLEMENTED, "EssentialsX does not support bank accounts!");
+        return new EconomyResponse(
+                0,
+                0,
+                EconomyResponse.ResponseType.NOT_IMPLEMENTED,
+                "EssentialsX does not support bank accounts!");
     }
 
     @Override
     public EconomyResponse bankHas(String name, double amount) {
-        return new EconomyResponse(0, 0, EconomyResponse.ResponseType.NOT_IMPLEMENTED, "EssentialsX does not support bank accounts!");
+        return new EconomyResponse(
+                0,
+                0,
+                EconomyResponse.ResponseType.NOT_IMPLEMENTED,
+                "EssentialsX does not support bank accounts!");
     }
 
     @Override
     public EconomyResponse bankWithdraw(String name, double amount) {
-        return new EconomyResponse(0, 0, EconomyResponse.ResponseType.NOT_IMPLEMENTED, "EssentialsX does not support bank accounts!");
+        return new EconomyResponse(
+                0,
+                0,
+                EconomyResponse.ResponseType.NOT_IMPLEMENTED,
+                "EssentialsX does not support bank accounts!");
     }
 
     @Override
     public EconomyResponse bankDeposit(String name, double amount) {
-        return new EconomyResponse(0, 0, EconomyResponse.ResponseType.NOT_IMPLEMENTED, "EssentialsX does not support bank accounts!");
+        return new EconomyResponse(
+                0,
+                0,
+                EconomyResponse.ResponseType.NOT_IMPLEMENTED,
+                "EssentialsX does not support bank accounts!");
     }
 
     @Override
     public EconomyResponse isBankOwner(String name, String playerName) {
-        return new EconomyResponse(0, 0, EconomyResponse.ResponseType.NOT_IMPLEMENTED, "EssentialsX does not support bank accounts!");
+        return new EconomyResponse(
+                0,
+                0,
+                EconomyResponse.ResponseType.NOT_IMPLEMENTED,
+                "EssentialsX does not support bank accounts!");
     }
 
     @Override
     public EconomyResponse isBankOwner(String name, OfflinePlayer player) {
-        return new EconomyResponse(0, 0, EconomyResponse.ResponseType.NOT_IMPLEMENTED, "EssentialsX does not support bank accounts!");
+        return new EconomyResponse(
+                0,
+                0,
+                EconomyResponse.ResponseType.NOT_IMPLEMENTED,
+                "EssentialsX does not support bank accounts!");
     }
 
     @Override
     public EconomyResponse isBankMember(String name, String playerName) {
-        return new EconomyResponse(0, 0, EconomyResponse.ResponseType.NOT_IMPLEMENTED, "EssentialsX does not support bank accounts!");
+        return new EconomyResponse(
+                0,
+                0,
+                EconomyResponse.ResponseType.NOT_IMPLEMENTED,
+                "EssentialsX does not support bank accounts!");
     }
 
     @Override
     public EconomyResponse isBankMember(String name, OfflinePlayer player) {
-        return new EconomyResponse(0, 0, EconomyResponse.ResponseType.NOT_IMPLEMENTED, "EssentialsX does not support bank accounts!");
+        return new EconomyResponse(
+                0,
+                0,
+                EconomyResponse.ResponseType.NOT_IMPLEMENTED,
+                "EssentialsX does not support bank accounts!");
     }
 
     @Override

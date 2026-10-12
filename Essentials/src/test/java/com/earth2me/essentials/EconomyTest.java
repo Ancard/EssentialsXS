@@ -4,8 +4,10 @@ import com.earth2me.essentials.api.NoLoanPermittedException;
 import com.earth2me.essentials.api.UserDoesNotExistException;
 import com.earth2me.essentials.commands.IEssentialsCommand;
 import com.earth2me.essentials.commands.NoChargeException;
+
 import net.ess3.api.Economy;
 import net.ess3.api.MaxMoneyException;
+
 import org.bukkit.command.CommandSender;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
@@ -45,6 +47,24 @@ public class EconomyTest {
     }
 
     // only one big test, since we use static instances
+
+    @Test
+    void vaultAdapterPreservesPlayerAndNpcAccounts() throws Exception {
+        final com.earth2me.essentials.economy.vault.VaultEconomyProvider provider =
+                new com.earth2me.essentials.economy.vault.VaultEconomyProvider(ess);
+        Assertions.assertTrue(provider.createPlayerAccount("vault-npc"));
+        Assertions.assertTrue(provider.depositPlayer("vault-npc", 12.5).transactionSuccess());
+        Assertions.assertEquals(12.5, provider.getBalance("vault-npc"));
+        Assertions.assertTrue(provider.withdrawPlayer("vault-npc", 2.5).transactionSuccess());
+        Assertions.assertEquals(10.0, provider.getBalance("vault-npc"));
+        Assertions.assertFalse(provider.withdrawPlayer("vault-npc", -1).transactionSuccess());
+        Assertions.assertTrue(
+                provider.depositPlayer(server.getPlayer(PLAYERNAME), 5).transactionSuccess());
+        Assertions.assertEquals(5.0, provider.getBalance(server.getPlayer(PLAYERNAME)));
+        Economy.removeNPC("vault-npc");
+        Assertions.assertFalse(provider.hasAccount("vault-npc"));
+    }
+
     @Test
     public void testEconomy() {
         // test NPC
@@ -59,7 +79,7 @@ public class EconomyTest {
         }
         Assertions.assertFalse(Economy.playerExists(NPCNAME), "NPC can be removed");
 
-        //test Math
+        // test Math
         try {
 
             Assertions.assertTrue(Economy.playerExists(PLAYERNAME), "Player exists");
@@ -75,18 +95,20 @@ public class EconomyTest {
             Assertions.assertEquals(5.0, Economy.getMoney(PLAYERNAME), 0, "Divide money");
             Economy.setMoney(PLAYERNAME, 10.0);
             Assertions.assertEquals(10.0, Economy.getMoney(PLAYERNAME), 0, "Set money");
-        } catch (final NoLoanPermittedException | UserDoesNotExistException | MaxMoneyException ex) {
+        } catch (final NoLoanPermittedException
+                | UserDoesNotExistException
+                | MaxMoneyException ex) {
             Assertions.fail(ex.getMessage());
         }
 
-        //test Format
+        // test Format
         Assertions.assertEquals("$1,000", Economy.format(1000.0), "Format $1,000");
         Assertions.assertEquals("$10", Economy.format(10.0), "Format $10");
         Assertions.assertEquals("$10.10", Economy.format(10.10), "Format $10.10");
         Assertions.assertEquals("$10.10", Economy.format(10.1000001), "Format $10.10");
         Assertions.assertEquals("$10.10", Economy.format(10.1099999), "Format $10.10");
 
-        //test Exceptions
+        // test Exceptions
         try {
             Assertions.assertTrue(Economy.playerExists(PLAYERNAME), "Player exists");
             Economy.resetBalance(PLAYERNAME);
@@ -107,21 +129,26 @@ public class EconomyTest {
         }
     }
 
-    private void runCommand(final String command, final User user, final String args) throws Exception {
+    private void runCommand(final String command, final User user, final String args)
+            throws Exception {
         runCommand(command, user, args.split("\\s+"));
     }
 
-    private void runCommand(final String command, final User user, final String[] args) throws Exception {
+    private void runCommand(final String command, final User user, final String[] args)
+            throws Exception {
         final IEssentialsCommand cmd;
 
         try {
-            cmd = (IEssentialsCommand) Essentials.class.getClassLoader()
-                .loadClass("com.earth2me.essentials.commands.Command" + command).newInstance();
+            cmd =
+                    (IEssentialsCommand)
+                            Essentials.class
+                                    .getClassLoader()
+                                    .loadClass("com.earth2me.essentials.commands.Command" + command)
+                                    .newInstance();
             cmd.setEssentials(ess);
             cmd.run(server, user, command, null, args);
         } catch (final NoChargeException ignored) {
         }
-
     }
 
     private void runConsoleCommand(final String command, final String args) throws Exception {
@@ -134,8 +161,12 @@ public class EconomyTest {
         final CommandSender sender = server.getConsoleSender();
 
         try {
-            cmd = (IEssentialsCommand) Essentials.class.getClassLoader()
-                .loadClass("com.earth2me.essentials.commands.Command" + command).newInstance();
+            cmd =
+                    (IEssentialsCommand)
+                            Essentials.class
+                                    .getClassLoader()
+                                    .loadClass("com.earth2me.essentials.commands.Command" + command)
+                                    .newInstance();
             cmd.setEssentials(ess);
             cmd.run(server, new CommandSource(ess, sender), command, null, args);
         } catch (final NoChargeException ignored) {
@@ -148,7 +179,9 @@ public class EconomyTest {
         try {
             runCommand("pay", user1, PLAYERNAME2 + " -123");
         } catch (final Exception e) {
-            Assertions.assertEquals(ess.getAdventureFacet().miniToLegacy(I18n.tlLiteral("payMustBePositive")), e.getMessage());
+            Assertions.assertEquals(
+                    ess.getAdventureFacet().miniToLegacy(I18n.tlLiteral("payMustBePositive")),
+                    e.getMessage());
         }
     }
 }

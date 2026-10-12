@@ -1,0 +1,62 @@
+{
+  "name": "EssentialsXS",
+  "version": "2.22.1",
+  "date": "2026-10-12",
+  "included_modules": [
+    "base",
+    "Chat",
+    "Protect",
+    "AntiBuild",
+    "Spawn",
+    "GeoIP"
+  ],
+  "build": "BUILD SUCCESSFUL",
+  "packaging_checks": [
+    "Six expected artifact names",
+    "Plugin descriptor version 2.22.1",
+    "No private branding in any JAR entry",
+    "Public backend defaults embedded in base JAR"
+  ],
+  "defaults": {
+    "host": "127.0.0.1",
+    "database": "essentialsxs",
+    "backend": "yaml",
+    "password_env": "ESSENTIALSXS_DB_PASSWORD",
+    "table_prefix": "essxs_",
+    "username_env": "ESSENTIALSXS_DB_USER",
+    "port": 3306
+  },
+  "runtime_note": "At packaging time this build had not been deployed. Subsequent testing with 41 plugins reproduced a critical SQL login regression and watchdog shutdown; see BACKEND-PROGRESS.md. The fix is pending.",
+  "artifacts": [
+    {
+      "name": "EssentialsXS-2.22.1.jar",
+      "bytes": 10631166,
+      "sha256": "329b01d3c8331b0f7aef015aa86d38048ac5605be7a153902e35f6534d9f3b04"
+    },
+    {
+      "name": "EssentialsXSAntiBuild-2.22.1.jar",
+      "bytes": 20829,
+      "sha256": "c85f5d51e9b0b409084422ce77c3777e7faf15346d09c97f69cd9b32a7fe9d51"
+    },
+    {
+      "name": "EssentialsXSChat-2.22.1.jar",
+      "bytes": 21782,
+      "sha256": "21f8b4b1b3725a21ff21da930ccca794af7ae7cd3391b918761d337a113c8ed5"
+    },
+    {
+      "name": "EssentialsXSGeoIP-2.22.1.jar",
+      "bytes": 1891269,
+      "sha256": "4d085da8afc71bdcc6f61123c72a61af1b473a262807f5fd1e396358ecfeb1cb"
+    },
+    {
+      "name": "EssentialsXSProtect-2.22.1.jar",
+      "bytes": 27273,
+      "sha256": "cda63915fb68ff4fe0a2f5590f5b115bac211dbd028fa1ae9d54d0b5f060f7d0"
+    },
+    {
+      "name": "EssentialsXSSpawn-2.22.1.jar",
+      "bytes": 18781,
+      "sha256": "fb833760b9a19730559c479513887da0fcfa645141958490041457c8c2ea8318"
+    }
+  ]
+}

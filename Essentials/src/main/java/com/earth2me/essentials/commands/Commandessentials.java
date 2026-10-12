@@ -21,6 +21,7 @@ public class Commandessentials extends EssentialsTreeCommand {
         registerNode(new CommandMapCommand());
         registerNode(new DumpCommand());
         registerNode(new ReloadCommand());
+        registerNode(new com.earth2me.essentials.commands.essentials.BackendCommand());
         registerNode(new CleanupCommand());
         registerNode(new HomesCommand());
         registerNode(new UsermapCommand());

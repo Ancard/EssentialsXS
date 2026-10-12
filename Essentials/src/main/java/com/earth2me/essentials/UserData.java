@@ -9,10 +9,12 @@ import com.earth2me.essentials.userstorage.ModernUserMap;
 import com.earth2me.essentials.utils.NumberUtil;
 import com.earth2me.essentials.utils.StringUtil;
 import com.google.common.base.Charsets;
+
 import net.ess3.api.IEssentials;
 import net.ess3.api.MaxMoneyException;
 import net.ess3.api.TranslatableException;
 import net.essentialsx.api.v2.services.mail.MailMessage;
+
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -44,14 +46,22 @@ public abstract class UserData extends PlayerExtension implements IConf {
         final File folder = new File(ess.getDataFolder(), "userdata");
         // mkdirs() may return false if another thread created the folder concurrently,
         // so fall back to checking whether the directory now exists to avoid a race.
-        if (!folder.isDirectory() && !folder.mkdirs() && !folder.isDirectory()) {
+        if (!com.earth2me.essentials.config.storage.BackendSession.active()
+                && !folder.isDirectory()
+                && !folder.mkdirs()
+                && !folder.isDirectory()) {
             throw new RuntimeException("Unable to create userdata folder!");
         }
 
-        config = new EssentialsUserConfiguration(base.getName(), base.getUniqueId(), new File(folder, base.getUniqueId() + ".yml"));
-        config.setSaveHook(() -> {
-            config.setRootHolder(UserConfigHolder.class, holder);
-        });
+        config =
+                new EssentialsUserConfiguration(
+                        base.getName(),
+                        base.getUniqueId(),
+                        new File(folder, base.getUniqueId() + ".yml"));
+        config.setSaveHook(
+                () -> {
+                    config.setRootHolder(UserConfigHolder.class, holder);
+                });
         reloadConfig();
 
         if (config.getUsername() == null) {
@@ -60,22 +70,36 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public final void reset() {
-        config.blockingSave();
-        if (!config.getFile().delete()) {
-            ess.getLogger().warning("Unable to delete data file for " + config.getFile().getName());
-        }
-        if (config.getUsername() != null) {
-            final ModernUserMap users = (ModernUserMap) ess.getUsers();
-            users.invalidate(config.getUuid());
-            if (isNPC()) {
-                final String name = ess.getSettings().isSafeUsermap() ? StringUtil.safeString(config.getUsername()) : config.getUsername();
-                users.invalidate(UUID.nameUUIDFromBytes(("NPC:" + name).getBytes(Charsets.UTF_8)));
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            if (!com.earth2me.essentials.config.storage.RepositoryFiles.managed(config.getFile())) {
+                config.blockingSave();
+            }
+            if (!com.earth2me.essentials.config.storage.RepositoryFiles.delete(config.getFile())) {
+                ess.getLogger()
+                        .warning("Unable to delete data file for " + config.getFile().getName());
+            }
+            if (config.getUsername() != null) {
+                final ModernUserMap users = (ModernUserMap) ess.getUsers();
+                users.invalidate(config.getUuid());
+                if (isNPC()) {
+                    final String name =
+                            ess.getSettings().isSafeUsermap()
+                                    ? StringUtil.safeString(config.getUsername())
+                                    : config.getUsername();
+                    users.invalidate(
+                            UUID.nameUUIDFromBytes(("NPC:" + name).getBytes(Charsets.UTF_8)));
+                }
             }
         }
     }
 
     public final void cleanup() {
-        config.blockingSave();
+        if (com.earth2me.essentials.config.storage.RepositoryFiles.managed(config.getFile())) {
+            config.save();
+        } else {
+            config.blockingSave();
+        }
         ess.getUsers().removeCache(getConfigUUID());
     }
 
@@ -85,10 +109,23 @@ public abstract class UserData extends PlayerExtension implements IConf {
         try {
             holder = config.getRootNode().get(UserConfigHolder.class);
         } catch (Throwable e) {
-            ess.getLogger().log(Level.SEVERE, "Error while reading user config: " + config.getFile().getName(), e);
+            ess.getLogger()
+                    .log(
+                            Level.SEVERE,
+                            "Error while reading user config: " + config.getFile().getName(),
+                            e);
             throw new RuntimeException(e);
         }
         money = _getMoney();
+    }
+
+    public final void ensurePersistentWritable() {
+        config.ensureWritable();
+    }
+
+    /** Keeps admission checks and detached snapshots atomic without holding a lock during JDBC. */
+    protected final Object mutationLock() {
+        return com.earth2me.essentials.config.storage.BackendSession.mutationLock();
     }
 
     private BigDecimal _getMoney() {
@@ -119,22 +156,26 @@ public abstract class UserData extends PlayerExtension implements IConf {
         return money;
     }
 
-    public void setMoney(final BigDecimal value, final boolean throwError) throws MaxMoneyException {
-        final BigDecimal maxMoney = ess.getSettings().getMaxMoney();
-        final BigDecimal minMoney = ess.getSettings().getMinMoney();
-        if (value.compareTo(maxMoney) > 0) {
-            if (throwError) {
-                throw new MaxMoneyException();
+    public void setMoney(final BigDecimal value, final boolean throwError)
+            throws MaxMoneyException {
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            final BigDecimal maxMoney = ess.getSettings().getMaxMoney();
+            final BigDecimal minMoney = ess.getSettings().getMinMoney();
+            if (value.compareTo(maxMoney) > 0) {
+                if (throwError) {
+                    throw new MaxMoneyException();
+                }
+                money = maxMoney;
+            } else {
+                money = value;
             }
-            money = maxMoney;
-        } else {
-            money = value;
+            if (money.compareTo(minMoney) < 0) {
+                money = minMoney;
+            }
+            holder.money(money);
+            stopTransaction();
         }
-        if (money.compareTo(minMoney) < 0) {
-            money = minMoney;
-        }
-        holder.money(money);
-        stopTransaction();
     }
 
     private String getHomeName(String search) {
@@ -171,7 +212,6 @@ public abstract class UserData extends PlayerExtension implements IConf {
             if (loc != null && world.getWorld() == loc.getWorld()) {
                 return loc;
             }
-
         }
         return holder.homes().get(getHomes().get(0)).location();
     }
@@ -181,10 +221,13 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setHome(String name, final Location loc) {
-        //Invalid names will corrupt the yaml
-        name = StringUtil.safeString(name);
-        holder.homes().put(name, LazyLocation.fromLocation(loc));
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            // Invalid names will corrupt the yaml
+            name = StringUtil.safeString(name);
+            holder.homes().put(name, LazyLocation.fromLocation(loc));
+            config.save();
+        }
     }
 
     public void delHome(final String name) throws Exception {
@@ -223,8 +266,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setNickname(final String nick) {
-        holder.nickname(nick);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.nickname(nick);
+            config.save();
+        }
     }
 
     public Set<Material> getUnlimited() {
@@ -236,21 +282,27 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setUnlimited(final ItemStack stack, final boolean state) {
-        final boolean wasUpdated;
-        if (state) {
-            wasUpdated = holder.unlimited().add(stack.getType());
-        } else {
-            wasUpdated = holder.unlimited().remove(stack.getType());
-        }
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            final boolean wasUpdated;
+            if (state) {
+                wasUpdated = holder.unlimited().add(stack.getType());
+            } else {
+                wasUpdated = holder.unlimited().remove(stack.getType());
+            }
 
-        if (wasUpdated) {
-            config.save();
+            if (wasUpdated) {
+                config.save();
+            }
         }
     }
 
     public void clearAllPowertools() {
-        holder.powertools().clear();
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.powertools().clear();
+            config.save();
+        }
     }
 
     public List<String> getPowertool(final ItemStack stack) {
@@ -262,12 +314,16 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setPowertool(final ItemStack stack, final List<String> commandList) {
-        if (commandList == null || commandList.isEmpty()) {
-            holder.powertools().remove(stack.getType().name().toLowerCase(Locale.ENGLISH));
-        } else {
-            holder.powertools().put(stack.getType().name().toLowerCase(Locale.ENGLISH), commandList);
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            if (commandList == null || commandList.isEmpty()) {
+                holder.powertools().remove(stack.getType().name().toLowerCase(Locale.ENGLISH));
+            } else {
+                holder.powertools()
+                        .put(stack.getType().name().toLowerCase(Locale.ENGLISH), commandList);
+            }
+            config.save();
         }
-        config.save();
     }
 
     public boolean hasPowerTools() {
@@ -284,11 +340,14 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setLastLocation(final Location loc) {
-        if (loc == null || loc.getWorld() == null) {
-            return;
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            if (loc == null || loc.getWorld() == null) {
+                return;
+            }
+            holder.lastLocation(loc);
+            config.save();
         }
-        holder.lastLocation(loc);
-        config.save();
     }
 
     public Location getLogoutLocation() {
@@ -297,11 +356,14 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setLogoutLocation(final Location loc) {
-        if (loc == null || loc.getWorld() == null) {
-            return;
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            if (loc == null || loc.getWorld() == null) {
+                return;
+            }
+            holder.logoutLocation(loc);
+            config.save();
         }
-        holder.logoutLocation(loc);
-        config.save();
     }
 
     public long getLastTeleportTimestamp() {
@@ -309,8 +371,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setLastTeleportTimestamp(final long time) {
-        holder.timestamps().lastTeleport(time);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.timestamps().lastTeleport(time);
+            config.save();
+        }
     }
 
     public long getLastHealTimestamp() {
@@ -318,8 +383,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setLastHealTimestamp(final long time) {
-        holder.timestamps().lastHeal(time);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.timestamps().lastHeal(time);
+            config.save();
+        }
     }
 
     public String getJail() {
@@ -327,8 +395,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setJail(final String jail) {
-        holder.jail(jail);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.jail(jail);
+            config.save();
+        }
     }
 
     /**
@@ -340,7 +411,17 @@ public abstract class UserData extends PlayerExtension implements IConf {
         if (getMailAmount() != 0) {
             for (MailMessage mail : getMailMessages()) {
                 // I hate this code btw
-                list.add(mail.isLegacy() ? mail.getMessage() : ChatColor.GOLD + "[" + ChatColor.RESET + mail.getSenderUsername() + ChatColor.GOLD + "] " + ChatColor.RESET + mail.getMessage());
+                list.add(
+                        mail.isLegacy()
+                                ? mail.getMessage()
+                                : ChatColor.GOLD
+                                        + "["
+                                        + ChatColor.RESET
+                                        + mail.getSenderUsername()
+                                        + ChatColor.GOLD
+                                        + "] "
+                                        + ChatColor.RESET
+                                        + mail.getMessage());
             }
         }
         return list;
@@ -351,7 +432,12 @@ public abstract class UserData extends PlayerExtension implements IConf {
      */
     @Deprecated
     public void setMails(List<String> mails) {
-        throw new UnsupportedOperationException("UserData#setMails(List<String>) is deprecated and can no longer be used. Please tell the plugin author to update this!");
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            throw new UnsupportedOperationException(
+                    "UserData#setMails(List<String>) is deprecated and can no longer be used."
+                        + " Please tell the plugin author to update this!");
+        }
     }
 
     public int getMailAmount() {
@@ -393,8 +479,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setMailList(ArrayList<MailMessage> messages) {
-        holder.mail(messages);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.mail(messages);
+            config.save();
+        }
     }
 
     public boolean isTeleportEnabled() {
@@ -402,8 +491,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setTeleportEnabled(final boolean set) {
-        holder.teleportEnabled(set);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.teleportEnabled(set);
+            config.save();
+        }
     }
 
     public boolean isAutoTeleportEnabled() {
@@ -411,26 +503,35 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setAutoTeleportEnabled(final boolean set) {
-        holder.teleportAuto(set);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.teleportAuto(set);
+            config.save();
+        }
     }
 
     @Deprecated
     public void setIgnoredPlayers(final List<String> players) {
-        final List<UUID> uuids = new ArrayList<>();
-        for (final String player : players) {
-            final User user = ess.getOfflineUser(player);
-            if (user == null) {
-                return;
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            final List<UUID> uuids = new ArrayList<>();
+            for (final String player : players) {
+                final User user = ess.getOfflineUser(player);
+                if (user == null) {
+                    return;
+                }
+                uuids.add(user.getBase().getUniqueId());
             }
-            uuids.add(user.getBase().getUniqueId());
+            setIgnoredPlayerUUIDs(uuids);
         }
-        setIgnoredPlayerUUIDs(uuids);
     }
 
     public void setIgnoredPlayerUUIDs(final List<UUID> players) {
-        holder.ignore(players);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.ignore(players);
+            config.save();
+        }
     }
 
     @Deprecated
@@ -451,15 +552,18 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setIgnoredPlayer(final IUser user, final boolean set) {
-        final UUID uuid = user.getBase().getUniqueId();
-        if (set) {
-            if (!holder.ignore().contains(uuid)) {
-                holder.ignore().add(uuid);
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            final UUID uuid = user.getBase().getUniqueId();
+            if (set) {
+                if (!holder.ignore().contains(uuid)) {
+                    holder.ignore().add(uuid);
+                }
+            } else {
+                holder.ignore().remove(uuid);
             }
-        } else {
-            holder.ignore().remove(uuid);
+            config.save();
         }
-        config.save();
     }
 
     public boolean isGodModeEnabled() {
@@ -467,8 +571,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setGodModeEnabled(final boolean set) {
-        holder.godMode(set);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.godMode(set);
+            config.save();
+        }
     }
 
     public boolean isFlyModeEnabled() {
@@ -476,8 +583,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setFlyModeEnabled(final boolean set) {
-        holder.flyMode(set);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.flyMode(set);
+            config.save();
+        }
     }
 
     public boolean getMuted() {
@@ -489,8 +599,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setMuted(final boolean set) {
-        holder.muted(set);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.muted(set);
+            config.save();
+        }
     }
 
     public String getMuteReason() {
@@ -498,8 +611,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setMuteReason(final String reason) {
-        holder.muteReason(reason);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.muteReason(reason);
+            config.save();
+        }
     }
 
     public boolean hasMuteReason() {
@@ -511,8 +627,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setMuteTimeout(final long time) {
-        holder.timestamps().mute(time);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.timestamps().mute(time);
+            config.save();
+        }
     }
 
     public boolean isJailed() {
@@ -520,14 +639,20 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setJailed(final boolean set) {
-        holder.jailed(set);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.jailed(set);
+            config.save();
+        }
     }
 
     public boolean toggleJailed() {
-        final boolean ret = !isJailed();
-        setJailed(ret);
-        return ret;
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            final boolean ret = !isJailed();
+            setJailed(ret);
+            return ret;
+        }
     }
 
     public long getJailTimeout() {
@@ -535,8 +660,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setJailTimeout(final long time) {
-        holder.timestamps().jail(time);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.timestamps().jail(time);
+            config.save();
+        }
     }
 
     public long getOnlineJailedTime() {
@@ -544,8 +672,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setOnlineJailedTime(long onlineJailed) {
-        holder.timestamps().onlineJail(onlineJailed);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.timestamps().onlineJail(onlineJailed);
+            config.save();
+        }
     }
 
     public long getLastLogin() {
@@ -553,11 +684,14 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setLastLogin(final long time) {
-        holder.timestamps().login(time);
-        if (base.getAddress() != null && base.getAddress().getAddress() != null) {
-            holder.ipAddress(base.getAddress().getAddress().getHostAddress());
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.timestamps().login(time);
+            if (base.getAddress() != null && base.getAddress().getAddress() != null) {
+                holder.ipAddress(base.getAddress().getAddress().getHostAddress());
+            }
+            config.save();
         }
-        config.save();
     }
 
     public long getLastLogout() {
@@ -565,8 +699,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setLastLogout(final long time) {
-        holder.timestamps().logout(time);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.timestamps().logout(time);
+            config.save();
+        }
     }
 
     public String getLastLoginAddress() {
@@ -587,8 +724,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setGeoLocation(final String geolocation) {
-        holder.geolocation(geolocation);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.geolocation(geolocation);
+            config.save();
+        }
     }
 
     public boolean isSocialSpyEnabled() {
@@ -596,8 +736,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setSocialSpyEnabled(final boolean status) {
-        holder.socialSpy(status);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.socialSpy(status);
+            config.save();
+        }
     }
 
     public boolean isNPC() {
@@ -605,8 +748,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setNPC(final boolean set) {
-        holder.npc(set);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.npc(set);
+            config.save();
+        }
     }
 
     public String getLastAccountName() {
@@ -614,13 +760,16 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setLastAccountName(final String lastAccountName) {
-        if (getLastAccountName() != null && !getLastAccountName().equals(lastAccountName)) {
-            final List<String> usernames = holder.pastUsernames();
-            usernames.add(0, getLastAccountName());
-            holder.pastUsernames(usernames);
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            if (getLastAccountName() != null && !getLastAccountName().equals(lastAccountName)) {
+                final List<String> usernames = holder.pastUsernames();
+                usernames.add(0, getLastAccountName());
+                holder.pastUsernames(usernames);
+            }
+            holder.lastAccountName(lastAccountName);
+            config.save();
         }
-        holder.lastAccountName(lastAccountName);
-        config.save();
     }
 
     public boolean arePowerToolsEnabled() {
@@ -628,14 +777,20 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setPowerToolsEnabled(final boolean set) {
-        holder.powerToolsEnabled(set);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.powerToolsEnabled(set);
+            config.save();
+        }
     }
 
     public boolean togglePowerToolsEnabled() {
-        final boolean ret = !arePowerToolsEnabled();
-        setPowerToolsEnabled(ret);
-        return ret;
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            final boolean ret = !arePowerToolsEnabled();
+            setPowerToolsEnabled(ret);
+            return ret;
+        }
     }
 
     public long getKitTimestamp(String name) {
@@ -647,9 +802,12 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setKitTimestamp(String name, final long time) {
-        name = name.replace('.', '_').replace('/', '_').toLowerCase(Locale.ENGLISH);
-        holder.timestamps().kits().put(name, time);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            name = name.replace('.', '_').replace('/', '_').toLowerCase(Locale.ENGLISH);
+            holder.timestamps().kits().put(name, time);
+            config.save();
+        }
     }
 
     public List<CommandCooldown> getCooldownsList() {
@@ -681,29 +839,41 @@ public abstract class UserData extends PlayerExtension implements IConf {
         return null;
     }
 
-    public void addCommandCooldown(final Pattern pattern, final Date expiresAt, final boolean save) {
-        final CommandCooldown cooldown = new CommandCooldown();
-        cooldown.pattern(pattern);
-        cooldown.value(expiresAt.getTime());
-        if (cooldown.isIncomplete()) {
-            return;
-        }
-        holder.timestamps().commandCooldowns().add(cooldown);
-        if (save) {
-            save();
+    public void addCommandCooldown(
+            final Pattern pattern, final Date expiresAt, final boolean save) {
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            final CommandCooldown cooldown = new CommandCooldown();
+            cooldown.pattern(pattern);
+            cooldown.value(expiresAt.getTime());
+            if (cooldown.isIncomplete()) {
+                return;
+            }
+            holder.timestamps().commandCooldowns().add(cooldown);
+            if (save) {
+                save();
+            }
         }
     }
 
     public boolean clearCommandCooldown(final Pattern pattern) {
-        if (holder.timestamps().commandCooldowns().isEmpty()) {
-            return false; // false for no modification
-        }
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            if (holder.timestamps().commandCooldowns().isEmpty()) {
+                return false; // false for no modification
+            }
 
-        if (getCooldownsList().removeIf(cooldown -> cooldown != null && !cooldown.isIncomplete() && cooldown.pattern().equals(pattern))) {
-            save();
-            return true;
+            if (getCooldownsList()
+                    .removeIf(
+                            cooldown ->
+                                    cooldown != null
+                                            && !cooldown.isIncomplete()
+                                            && cooldown.pattern().equals(pattern))) {
+                save();
+                return true;
+            }
+            return false;
         }
-        return false;
     }
 
     public boolean isAcceptingPay() {
@@ -711,35 +881,53 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setAcceptingPay(final boolean acceptingPay) {
-        holder.acceptingPay(acceptingPay);
-        save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.acceptingPay(acceptingPay);
+            save();
+        }
     }
 
     public boolean isPromptingPayConfirm() {
-        return holder.confirmPay() != null ? holder.confirmPay() : ess.getSettings().isConfirmCommandEnabledByDefault("pay");
+        return holder.confirmPay() != null
+                ? holder.confirmPay()
+                : ess.getSettings().isConfirmCommandEnabledByDefault("pay");
     }
 
     public void setPromptingPayConfirm(final boolean prompt) {
-        holder.confirmPay(prompt);
-        save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.confirmPay(prompt);
+            save();
+        }
     }
 
     public boolean isPromptingClearConfirm() {
-        return holder.confirmClear() != null ? holder.confirmClear() : ess.getSettings().isConfirmCommandEnabledByDefault("clearinventory");
+        return holder.confirmClear() != null
+                ? holder.confirmClear()
+                : ess.getSettings().isConfirmCommandEnabledByDefault("clearinventory");
     }
 
     public void setPromptingClearConfirm(final boolean prompt) {
-        holder.confirmClear(prompt);
-        save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.confirmClear(prompt);
+            save();
+        }
     }
 
     public boolean isLastMessageReplyRecipient() {
-        return holder.lastMessageReplyRecipient() != null ? holder.lastMessageReplyRecipient() : ess.getSettings().isLastMessageReplyRecipient();
+        return holder.lastMessageReplyRecipient() != null
+                ? holder.lastMessageReplyRecipient()
+                : ess.getSettings().isLastMessageReplyRecipient();
     }
 
     public void setLastMessageReplyRecipient(final boolean enabled) {
-        holder.lastMessageReplyRecipient(enabled);
-        save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.lastMessageReplyRecipient(enabled);
+            save();
+        }
     }
 
     public boolean isBaltopExcludeCache() {
@@ -747,8 +935,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setBaltopExemptCache(boolean baltopExempt) {
-        holder.baltopExempt(baltopExempt);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.baltopExempt(baltopExempt);
+            config.save();
+        }
     }
 
     public List<String> getPastUsernames() {
@@ -756,10 +947,13 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void addPastUsername(String username) {
-        final List<String> usernames = holder.pastUsernames();
-        usernames.add(0, username);
-        holder.pastUsernames(usernames);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            final List<String> usernames = holder.pastUsernames();
+            usernames.add(0, username);
+            holder.pastUsernames(usernames);
+            config.save();
+        }
     }
 
     public boolean isShouting() {
@@ -770,8 +964,11 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setShouting(boolean shouting) {
-        holder.shouting(shouting);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            holder.shouting(shouting);
+            config.save();
+        }
     }
 
     public UUID getConfigUUID() {
@@ -783,7 +980,10 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void startTransaction() {
-        config.startTransaction();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            config.startTransaction();
+        }
     }
 
     public void stopTransaction() {
@@ -791,12 +991,18 @@ public abstract class UserData extends PlayerExtension implements IConf {
     }
 
     public void setConfigProperty(String node, Object object) {
-        setConfigPropertyRaw("info." + node, object);
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            setConfigPropertyRaw("info." + node, object);
+        }
     }
 
     public void setConfigPropertyRaw(String node, Object object) {
-        config.setRaw(node, object);
-        config.save();
+        synchronized (mutationLock()) {
+            ensurePersistentWritable();
+            config.setRaw(node, object);
+            config.save();
+        }
     }
 
     public Set<String> getConfigKeys() {

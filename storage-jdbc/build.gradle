@@ -1,0 +1,30 @@
+plugins {
+    id 'java-library'
+    id 'com.gradleup.shadow'
+}
+java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
+tasks.withType(JavaCompile).configureEach { options.release = 11 }
+dependencies {
+    api project(':storage-api')
+    implementation 'com.zaxxer:HikariCP:7.1.0'
+    implementation 'com.mysql:mysql-connector-j:9.7.0'
+    implementation 'org.mariadb.jdbc:mariadb-java-client:3.5.10'
+    implementation 'org.spongepowered:configurate-yaml:4.2.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.12.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.12.2'
+}
+tasks.test {
+    outputs.upToDateWhen { System.getenv('ESSENTIALSX_RUN_DB_TESTS') != 'true' }
+    useJUnitPlatform()
+    systemProperty 'java.io.tmpdir', rootProject.file('test-tmp').absolutePath
+    doFirst { rootProject.file('test-tmp').mkdirs() }
+}
+shadowJar {
+    archiveClassifier = ''
+    relocate 'com.zaxxer.hikari', 'net.essentialsx.storage.libs.hikari'
+    relocate 'com.mysql', 'net.essentialsx.storage.libs.mysql'
+    relocate 'org.mariadb', 'net.essentialsx.storage.libs.mariadb'
+    relocate 'com.google.protobuf', 'net.essentialsx.storage.libs.protobuf'
+    mergeServiceFiles()
+    dependencies { exclude project(':storage-api') }
+}

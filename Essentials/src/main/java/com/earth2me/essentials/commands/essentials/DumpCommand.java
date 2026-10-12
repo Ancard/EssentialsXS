@@ -174,7 +174,7 @@ public class DumpCommand extends EssentialsTreeNode {
 
             if (config) {
                 try {
-                    files.add(new PasteUtil.PasteFile("config.yml", new String(Files.readAllBytes(ess.getSettings().getConfigFile().toPath()), StandardCharsets.UTF_8)));
+                    files.add(new PasteUtil.PasteFile("config.yml", new String(com.earth2me.essentials.config.storage.RepositoryText.bytes(ess.getSettings().getConfigFile()), StandardCharsets.UTF_8)));
                 } catch (IOException e) {
                     sender.sendTl("dumpErrorUpload", "config.yml", e.getMessage());
                 }
@@ -201,7 +201,7 @@ public class DumpCommand extends EssentialsTreeNode {
 
             if (kits) {
                 try {
-                    files.add(new PasteUtil.PasteFile("kits.yml", new String(Files.readAllBytes(ess.getKits().getFile().toPath()), StandardCharsets.UTF_8)));
+                    files.add(new PasteUtil.PasteFile("kits.yml", new String(com.earth2me.essentials.config.storage.RepositoryText.bytes(ess.getKits().getFile()), StandardCharsets.UTF_8)));
                 } catch (IOException e) {
                     sender.sendTl("dumpErrorUpload", "kits.yml", e.getMessage());
                 }
@@ -219,7 +219,7 @@ public class DumpCommand extends EssentialsTreeNode {
 
             if (worth) {
                 try {
-                    files.add(new PasteUtil.PasteFile("worth.yml", new String(Files.readAllBytes(ess.getWorth().getFile().toPath()), StandardCharsets.UTF_8)));
+                    files.add(new PasteUtil.PasteFile("worth.yml", new String(com.earth2me.essentials.config.storage.RepositoryText.bytes(ess.getWorth().getFile()), StandardCharsets.UTF_8)));
                 } catch (IOException e) {
                     sender.sendTl("dumpErrorUpload", "worth.yml", e.getMessage());
                 }
@@ -227,7 +227,7 @@ public class DumpCommand extends EssentialsTreeNode {
 
             if (tpr) {
                 try {
-                    files.add(new PasteUtil.PasteFile("tpr.yml", new String(Files.readAllBytes(ess.getRandomTeleport().getFile().toPath()), StandardCharsets.UTF_8)));
+                    files.add(new PasteUtil.PasteFile("tpr.yml", new String(com.earth2me.essentials.config.storage.RepositoryText.bytes(ess.getRandomTeleport().getFile()), StandardCharsets.UTF_8)));
                 } catch (IOException e) {
                     sender.sendTl("dumpErrorUpload", "tpr.yml", e.getMessage());
                 }
@@ -235,7 +235,7 @@ public class DumpCommand extends EssentialsTreeNode {
 
             if (spawns && essSpawn != null) {
                 try {
-                    files.add(new PasteUtil.PasteFile("spawn.yml", new String(Files.readAllBytes(ess.getDataFolder().toPath().resolve("spawn.yml")), StandardCharsets.UTF_8)));
+                    files.add(new PasteUtil.PasteFile("spawn.yml", new String(com.earth2me.essentials.config.storage.RepositoryText.bytes(new java.io.File(ess.getDataFolder(), "spawn.yml")), StandardCharsets.UTF_8)));
                 } catch (IOException e) {
                     sender.sendTl("dumpErrorUpload", "spawn.yml", e.getMessage());
                 }

@@ -33,3 +33,12 @@ test-tmp/
 
 # Run directory
 /run/
+
+# Public distribution artifacts
+/releases/
+
+# Local credentials and storage recovery data
+.env
+.env.*
+*.secrets.ps1
+backend-recovery/

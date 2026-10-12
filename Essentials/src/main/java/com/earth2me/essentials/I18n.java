@@ -1,7 +1,9 @@
 package com.earth2me.essentials;
 
 import com.earth2me.essentials.adventure.AdventureUtil;
+
 import net.ess3.api.IEssentials;
+
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
@@ -36,17 +38,19 @@ import java.util.regex.Pattern;
 public class I18n implements net.ess3.api.II18n {
     private static final String MESSAGES = "messages";
     private static final Pattern NODOUBLEMARK = Pattern.compile("''");
-    private static volatile ExecutorService BUNDLE_LOADER_EXECUTOR = Executors.newFixedThreadPool(2);
-    private static final ResourceBundle NULL_BUNDLE = new ResourceBundle() {
-        @SuppressWarnings("NullableProblems")
-        public Enumeration<String> getKeys() {
-            return null;
-        }
+    private static volatile ExecutorService BUNDLE_LOADER_EXECUTOR =
+            Executors.newFixedThreadPool(2);
+    private static final ResourceBundle NULL_BUNDLE =
+            new ResourceBundle() {
+            @SuppressWarnings("NullableProblems")
+            public Enumeration<String> getKeys() {
+                return null;
+            }
 
-        protected Object handleGetObject(final @NotNull String key) {
-            return null;
-        }
-    };
+            protected Object handleGetObject(final @NotNull String key) {
+                return null;
+            }
+        };
     private static I18n instance;
     private final transient Locale defaultLocale = Locale.getDefault();
     private final transient ResourceBundle defaultBundle;
@@ -55,18 +59,22 @@ public class I18n implements net.ess3.api.II18n {
     private final transient Map<Locale, ResourceBundle> loadedBundles = new ConcurrentHashMap<>();
     private final transient List<Locale> loadingBundles = new ArrayList<>();
     private transient ResourceBundle localeBundle;
-    private final transient Map<Locale, Map<String, MessageFormat>> messageFormatCache = new HashMap<>();
+    private final transient Map<Locale, Map<String, MessageFormat>> messageFormatCache =
+            new HashMap<>();
 
     public I18n(final IEssentials ess) {
         this.ess = ess;
-        defaultBundle = ResourceBundle.getBundle(MESSAGES, Locale.ENGLISH, new UTF8PropertiesControl());
+        defaultBundle =
+                ResourceBundle.getBundle(MESSAGES, Locale.ENGLISH, new UTF8PropertiesControl());
         localeBundle = defaultBundle;
     }
 
     /**
      * Translates a message using the server's configured locale.
+     *
      * @param tlKey The translation key.
-     * @param objects Translation parameters, if applicable. Note: by default, these will not be parsed for MiniMessage.
+     * @param objects Translation parameters, if applicable. Note: by default, these will not be
+     *     parsed for MiniMessage.
      * @return The translated message.
      * @see AdventureUtil#parsed(String)
      */
@@ -80,13 +88,16 @@ public class I18n implements net.ess3.api.II18n {
 
     /**
      * Translates a message using the provided locale.
+     *
      * @param locale The locale to translate the key to.
      * @param tlKey The translation key.
-     * @param objects Translation parameters, if applicable. Note: by default, these will not be parsed for MiniMessage.
+     * @param objects Translation parameters, if applicable. Note: by default, these will not be
+     *     parsed for MiniMessage.
      * @return The translated message.
      * @see AdventureUtil#parsed(String)
      */
-    public static String tlLocale(final Locale locale, final String tlKey, final Object... objects) {
+    public static String tlLocale(
+            final Locale locale, final String tlKey, final Object... objects) {
         if (instance == null) {
             return "";
         }
@@ -98,7 +109,10 @@ public class I18n implements net.ess3.api.II18n {
     }
 
     public static String capitalCase(final String input) {
-        return input == null || input.isEmpty() ? input : input.toUpperCase(Locale.ENGLISH).charAt(0) + input.toLowerCase(Locale.ENGLISH).substring(1);
+        return input == null || input.isEmpty()
+                ? input
+                : input.toUpperCase(Locale.ENGLISH).charAt(0)
+                        + input.toLowerCase(Locale.ENGLISH).substring(1);
     }
 
     public void onEnable() {
@@ -111,7 +125,9 @@ public class I18n implements net.ess3.api.II18n {
     }
 
     private static synchronized ExecutorService getExecutor() {
-        if (BUNDLE_LOADER_EXECUTOR == null || BUNDLE_LOADER_EXECUTOR.isShutdown() || BUNDLE_LOADER_EXECUTOR.isTerminated()) {
+        if (BUNDLE_LOADER_EXECUTOR == null
+                || BUNDLE_LOADER_EXECUTOR.isShutdown()
+                || BUNDLE_LOADER_EXECUTOR.isTerminated()) {
             BUNDLE_LOADER_EXECUTOR = Executors.newFixedThreadPool(2);
         }
         return BUNDLE_LOADER_EXECUTOR;
@@ -138,8 +154,9 @@ public class I18n implements net.ess3.api.II18n {
     }
 
     /**
-     * Returns the {@link ResourceBundle} for the given {@link Locale}, if loaded. If a bundle is requested which is
-     * not loaded, it will be loaded asynchronously and the default bundle will be returned in the meantime.
+     * Returns the {@link ResourceBundle} for the given {@link Locale}, if loaded. If a bundle is
+     * requested which is not loaded, it will be loaded asynchronously and the default bundle will
+     * be returned in the meantime.
      */
     private ResourceBundle getBundle(final Locale locale) {
         if (loadedBundles.containsKey(locale)) {
@@ -148,12 +165,14 @@ public class I18n implements net.ess3.api.II18n {
             synchronized (loadingBundles) {
                 if (!loadingBundles.contains(locale)) {
                     loadingBundles.add(locale);
-                    getExecutor().submit(() -> {
-                        blockingLoadBundle(locale);
-                        synchronized (loadingBundles) {
-                            loadingBundles.remove(locale);
-                        }
-                    });
+                    getExecutor()
+                            .submit(
+                                    () -> {
+                                        blockingLoadBundle(locale);
+                                        synchronized (loadingBundles) {
+                                            loadingBundles.remove(locale);
+                                        }
+                                    });
                 }
             }
             return defaultBundle;
@@ -164,10 +183,16 @@ public class I18n implements net.ess3.api.II18n {
         if (!loadedBundles.containsKey(locale)) {
             ResourceBundle bundle;
             try {
-                bundle = ResourceBundle.getBundle(MESSAGES, locale, new FileResClassLoader(I18n.class.getClassLoader(), ess), new UTF8PropertiesControl());
+                bundle =
+                        ResourceBundle.getBundle(
+                                MESSAGES,
+                                locale,
+                                new FileResClassLoader(I18n.class.getClassLoader(), ess),
+                                new UTF8PropertiesControl());
             } catch (MissingResourceException ex) {
                 try {
-                    bundle = ResourceBundle.getBundle(MESSAGES, locale, new UTF8PropertiesControl());
+                    bundle =
+                            ResourceBundle.getBundle(MESSAGES, locale, new UTF8PropertiesControl());
                 } catch (MissingResourceException ex2) {
                     bundle = NULL_BUNDLE;
                 }
@@ -186,7 +211,13 @@ public class I18n implements net.ess3.api.II18n {
             }
         } catch (final MissingResourceException ex) {
             if (ess != null && ess.getSettings().isDebug()) {
-                ess.getLogger().log(Level.WARNING, String.format("Missing translation key \"%s\" in translation file %s", ex.getKey(), localeBundle.getLocale().toString()), ex);
+                ess.getLogger()
+                        .log(
+                                Level.WARNING,
+                                String.format(
+                                        "Missing translation key \"%s\" in translation file %s",
+                                        ex.getKey(), localeBundle.getLocale().toString()),
+                                ex);
             }
             return defaultBundle.getString(string);
         }
@@ -195,29 +226,39 @@ public class I18n implements net.ess3.api.II18n {
     private String format(final Locale locale, final String string, final Object... objects) {
         String format = translate(locale, string);
 
-        MessageFormat messageFormat = messageFormatCache.computeIfAbsent(locale, l -> new HashMap<>()).get(format);
+        MessageFormat messageFormat =
+                messageFormatCache.computeIfAbsent(locale, l -> new HashMap<>()).get(format);
         if (messageFormat == null) {
             try {
                 messageFormat = new MessageFormat(format);
             } catch (final IllegalArgumentException e) {
-                ess.getLogger().log(Level.SEVERE, "Invalid Translation key for '" + string + "': " + e.getMessage());
+                ess.getLogger()
+                        .log(
+                                Level.SEVERE,
+                                "Invalid Translation key for '" + string + "': " + e.getMessage());
                 format = format.replaceAll("\\{(\\D*?)}", "\\[$1\\]");
                 messageFormat = new MessageFormat(format);
             }
             messageFormatCache.get(locale).put(format, messageFormat);
         }
 
-        final Object[] processedArgs = mutateArgs(objects, arg -> {
-            if (arg instanceof AdventureUtil.ParsedPlaceholder) {
-                return arg.toString();
-            }
-            return ess.getAdventureFacet().legacyToMini(ess.getAdventureFacet().escapeTags(arg.toString()));
-        });
+        final Object[] processedArgs =
+                mutateArgs(
+                        objects,
+                        arg -> {
+                            if (arg instanceof AdventureUtil.ParsedPlaceholder) {
+                                return arg.toString();
+                            }
+                            return ess.getAdventureFacet()
+                                    .legacyToMini(
+                                            ess.getAdventureFacet().escapeTags(arg.toString()));
+                        });
 
         return messageFormat.format(processedArgs).replace(' ', ' '); // replace nbsp with a space
     }
 
-    public static Object[] mutateArgs(final Object[] objects, final Function<Object, String> mutator) {
+    public static Object[] mutateArgs(
+            final Object[] objects, final Function<Object, String> mutator) {
         final Object[] args = new Object[objects.length];
         for (int i = 0; i < objects.length; i++) {
             final Object object = objects[i];
@@ -242,7 +283,8 @@ public class I18n implements net.ess3.api.II18n {
         ess.getLogger().log(Level.INFO, String.format("Using locale %s", currentLocale.toString()));
 
         try {
-            localeBundle = ResourceBundle.getBundle(MESSAGES, currentLocale, new UTF8PropertiesControl());
+            localeBundle =
+                    ResourceBundle.getBundle(MESSAGES, currentLocale, new UTF8PropertiesControl());
         } catch (final MissingResourceException ex) {
             localeBundle = NULL_BUNDLE;
         }
@@ -293,6 +335,17 @@ public class I18n implements net.ess3.api.II18n {
         @Override
         public InputStream getResourceAsStream(final String string) {
             final File file = new File(messagesFolder, string);
+            if (com.earth2me.essentials.config.storage.RepositoryFiles.managed(file)) {
+                if (!com.earth2me.essentials.config.storage.RepositoryFiles.exists(file)) {
+                    return null;
+                }
+                try {
+                    return new java.io.ByteArrayInputStream(
+                            com.earth2me.essentials.config.storage.RepositoryText.bytes(file));
+                } catch (IOException e) {
+                    throw new IllegalStateException("Cannot read stored translations.", e);
+                }
+            }
             if (file.exists()) {
                 try {
                     return new FileInputStream(file);
@@ -308,17 +361,28 @@ public class I18n implements net.ess3.api.II18n {
      * Java 9 fixes this by defaulting to UTF-8 for .properties files.
      */
     private static final class UTF8PropertiesControl extends ResourceBundle.Control {
-        public ResourceBundle newBundle(final String baseName, final Locale locale, final String format, final ClassLoader loader, final boolean reload) throws IOException {
-            final String resourceName = toResourceName(toBundleName(baseName, locale), "properties");
+        public ResourceBundle newBundle(
+                final String baseName,
+                final Locale locale,
+                final String format,
+                final ClassLoader loader,
+                final boolean reload)
+                throws IOException {
+            final String resourceName =
+                    toResourceName(toBundleName(baseName, locale), "properties");
             ResourceBundle bundle = null;
             InputStream stream = null;
             if (reload) {
-                final URL url = loader.getResource(resourceName);
-                if (url != null) {
-                    final URLConnection connection = url.openConnection();
-                    if (connection != null) {
-                        connection.setUseCaches(false);
-                        stream = connection.getInputStream();
+                if (com.earth2me.essentials.config.storage.BackendSession.active()) {
+                    stream = loader.getResourceAsStream(resourceName);
+                } else {
+                    final URL url = loader.getResource(resourceName);
+                    if (url != null) {
+                        final URLConnection connection = url.openConnection();
+                        if (connection != null) {
+                            connection.setUseCaches(false);
+                            stream = connection.getInputStream();
+                        }
                     }
                 }
             } else {
@@ -327,7 +391,9 @@ public class I18n implements net.ess3.api.II18n {
             if (stream != null) {
                 try {
                     // use UTF-8 here, this is the important bit
-                    bundle = new PropertyResourceBundle(new InputStreamReader(stream, StandardCharsets.UTF_8));
+                    bundle =
+                            new PropertyResourceBundle(
+                                    new InputStreamReader(stream, StandardCharsets.UTF_8));
                 } finally {
                     stream.close();
                 }

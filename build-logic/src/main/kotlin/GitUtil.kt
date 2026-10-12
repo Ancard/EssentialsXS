@@ -24,6 +24,11 @@ object GitUtil {
                 }
             }
             depth++
+            // A shallow clone may end before any tag; do not invent a commit distance.
+            if (commit.parentCount == 0) {
+                walk.dispose()
+                return null
+            }
             commit = walk.parseCommit(commit.parents[0])
         }
     }

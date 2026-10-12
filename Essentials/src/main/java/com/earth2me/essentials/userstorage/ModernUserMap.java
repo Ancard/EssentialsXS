@@ -6,7 +6,9 @@ import com.earth2me.essentials.utils.NumberUtil;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+
 import net.ess3.api.IEssentials;
+
 import org.bukkit.entity.Player;
 
 import java.io.File;
@@ -34,20 +36,26 @@ public class ModernUserMap extends CacheLoader<UUID, User> implements IUserMap {
     public ModernUserMap(final IEssentials ess) {
         this.ess = ess;
         this.uuidCache = new ModernUUIDCache(ess);
-        this.userCache = CacheBuilder.newBuilder()
-                .maximumSize(ess.getSettings().getMaxUserCacheCount())
-                .expireAfterAccess(ess.getSettings().getMaxUserCacheValueExpiry(), TimeUnit.SECONDS)
-                .softValues()
-                .build(this);
+        this.userCache =
+                CacheBuilder.newBuilder()
+                        .maximumSize(ess.getSettings().getMaxUserCacheCount())
+                        .expireAfterAccess(
+                                ess.getSettings().getMaxUserCacheValueExpiry(), TimeUnit.SECONDS)
+                        .softValues()
+                        .build(this);
 
         // -Dnet.essentialsx.usermap.print-stack=true
-        final String printStackProperty = System.getProperty("net.essentialsx.usermap.print-stack", "false");
+        final String printStackProperty =
+                System.getProperty("net.essentialsx.usermap.print-stack", "false");
         // -Dnet.essentialsx.usermap.max-warns=20
-        final String maxWarnProperty = System.getProperty("net.essentialsx.usermap.max-warns", "10");
+        final String maxWarnProperty =
+                System.getProperty("net.essentialsx.usermap.max-warns", "10");
         // -Dnet.essentialsx.usermap.log-cache=true
-        final String logCacheProperty = System.getProperty("net.essentialsx.usermap.log-cache", "false");
+        final String logCacheProperty =
+                System.getProperty("net.essentialsx.usermap.log-cache", "false");
 
-        this.debugMaxWarnsPerType = NumberUtil.isLong(maxWarnProperty) ? Long.parseLong(maxWarnProperty) : -1;
+        this.debugMaxWarnsPerType =
+                NumberUtil.isLong(maxWarnProperty) ? Long.parseLong(maxWarnProperty) : -1;
         this.debugPrintStackWithWarn = Boolean.parseBoolean(printStackProperty);
         this.debugLogCache = Boolean.parseBoolean(logCacheProperty);
         this.debugNonPlayerWarnCounts = new ConcurrentHashMap<>();
@@ -73,7 +81,11 @@ public class ModernUserMap extends CacheLoader<UUID, User> implements IUserMap {
             return userCache.getIfPresent(uuid) != null;
         } catch (Exception e) {
             if (ess.getSettings().isDebug()) {
-                ess.getLogger().log(Level.WARNING, "Exception while checking if user is cached for " + uuid, e);
+                ess.getLogger()
+                        .log(
+                                Level.WARNING,
+                                "Exception while checking if user is cached for " + uuid,
+                                e);
             }
             return false;
         }
@@ -158,6 +170,10 @@ public class ModernUserMap extends CacheLoader<UUID, User> implements IUserMap {
 
     @Override
     public User loadUncachedUser(final Player base) {
+        if (com.earth2me.essentials.config.storage.BackendSession.active()
+                && !org.bukkit.Bukkit.isPrimaryThread()) {
+            return publishOnMain(() -> loadUncachedUser(base));
+        }
         if (base == null) {
             return null;
         }
@@ -168,7 +184,11 @@ public class ModernUserMap extends CacheLoader<UUID, User> implements IUserMap {
             user = new User(base, ess);
         } else if (!base.equals(user.getBase())) {
             if (ess.getSettings().isDebug()) {
-                ess.getLogger().log(Level.INFO, "Essentials updated the underlying Player object for " + user.getUUID());
+                ess.getLogger()
+                        .log(
+                                Level.INFO,
+                                "Essentials updated the underlying Player object for "
+                                        + user.getUUID());
             }
             user.update(base);
         }
@@ -179,6 +199,10 @@ public class ModernUserMap extends CacheLoader<UUID, User> implements IUserMap {
 
     @Override
     public User loadUncachedUser(final UUID uuid) {
+        if (com.earth2me.essentials.config.storage.BackendSession.active()
+                && !org.bukkit.Bukkit.isPrimaryThread()) {
+            return publishOnMain(() -> loadUncachedUser(uuid));
+        }
         User user = userCache.getIfPresent(uuid);
         if (user != null) {
             return user;
@@ -193,30 +217,83 @@ public class ModernUserMap extends CacheLoader<UUID, User> implements IUserMap {
         }
 
         final File userFile = getUserFile(uuid);
-        if (userFile.exists()) {
+        if (com.earth2me.essentials.config.storage.RepositoryFiles.exists(userFile)) {
             player = new OfflinePlayerStub(uuid, ess.getServer());
             user = new User(player, ess);
             final String accName = user.getLastAccountName();
             ((OfflinePlayerStub) player).setName(accName);
-            // Check to see if there is already a UUID mapping for the name in the name cache before updating it.
-            // Since this code is ran for offline players, there's a chance we could be overriding the mapping
-            // for a player who changed their name to an older player's name, let that be handled during join.
+            // Check to see if there is already a UUID mapping for the name in the name cache before
+            // updating it.
+            // Since this code is ran for offline players, there's a chance we could be overriding
+            // the mapping
+            // for a player who changed their name to an older player's name, let that be handled
+            // during join.
             //
             // Here is a senerio which could take place if didn't do the containsKey check;
-            // "JRoyLULW" joins the server - "JRoyLULW" is mapped to 86f39a70-eda7-44a2-88f8-0ade4e1ec8c0
-            // "JRoyLULW" changes their name to "mbax" - Nothing happens, they are yet to join the server
-            // "mdcfe" changes their name to "JRoyLULW" - Nothing happens, they are yet to join the server
-            // "JRoyLULW" (formally "mdcfe") joins the server -  "JRoyLULW" is mapped to 62a6a4bb-a2b8-4796-bfe6-63067250990a
+            // "JRoyLULW" joins the server - "JRoyLULW" is mapped to
+            // 86f39a70-eda7-44a2-88f8-0ade4e1ec8c0
+            // "JRoyLULW" changes their name to "mbax" - Nothing happens, they are yet to join the
+            // server
+            // "mdcfe" changes their name to "JRoyLULW" - Nothing happens, they are yet to join the
+            // server
+            // "JRoyLULW" (formally "mdcfe") joins the server -  "JRoyLULW" is mapped to
+            // 62a6a4bb-a2b8-4796-bfe6-63067250990a
             // The /baltop command is ran, iterating over all players.
             //
-            // During the baltop iteration, two uuids have the `last-account-name` of "JRoyLULW" creating the
-            // potential that "JRoyLULW" is mapped back to 86f39a70-eda7-44a2-88f8-0ade4e1ec8c0 when the true
+            // During the baltop iteration, two uuids have the `last-account-name` of "JRoyLULW"
+            // creating the
+            // potential that "JRoyLULW" is mapped back to 86f39a70-eda7-44a2-88f8-0ade4e1ec8c0 when
+            // the true
             // bearer of that name is now 62a6a4bb-a2b8-4796-bfe6-63067250990a.
-            uuidCache.updateCache(uuid, (accName == null || uuidCache.getNameCache().containsKey(accName)) ? null : accName);
+            uuidCache.updateCache(
+                    uuid,
+                    (accName == null || uuidCache.getNameCache().containsKey(accName))
+                            ? null
+                            : accName);
             return user;
         }
 
         return null;
+    }
+
+    private User publishOnMain(java.util.concurrent.Callable<User> publication) {
+        if (!com.earth2me.essentials.config.storage.BackendSession.current().available()) {
+            throw new IllegalStateException("Profile publication is unavailable.");
+        }
+        final java.util.concurrent.CompletableFuture<User> result =
+                new java.util.concurrent.CompletableFuture<>();
+        ess.getServer()
+                .getScheduler()
+                .runTask(
+                        ess,
+                        () -> {
+                            if (result.isDone()
+                                    || !ess.isEnabled()
+                                    || com.earth2me.essentials.config.storage.BackendSession
+                                                    .current()
+                                            == null
+                                    || !com.earth2me.essentials.config.storage.BackendSession
+                                            .current()
+                                            .available()) {
+                                result.completeExceptionally(
+                                        new IllegalStateException(
+                                                "Profile publication is unavailable."));
+                                return;
+                            }
+                            try {
+                                result.complete(publication.call());
+                            } catch (Exception failure) {
+                                result.completeExceptionally(failure);
+                            }
+                        });
+        try {
+            return result.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Profile publication was interrupted.", interrupted);
+        } catch (Exception failure) {
+            throw new IllegalStateException("Profile publication failed.", failure);
+        }
     }
 
     @Override
@@ -234,6 +311,7 @@ public class ModernUserMap extends CacheLoader<UUID, User> implements IUserMap {
 
     public void invalidate(final UUID uuid) {
         userCache.invalidate(uuid);
+        onlineUserCache.remove(uuid);
         uuidCache.removeCache(uuid);
     }
 
@@ -255,17 +333,38 @@ public class ModernUserMap extends CacheLoader<UUID, User> implements IUserMap {
             return;
         }
         final Throwable throwable = new Throwable();
-        ess.getLogger().log(Level.INFO, String.format("Caching user %s (%s)", user.getName(), user.getUUID()), throwable);
+        ess.getLogger()
+                .log(
+                        Level.INFO,
+                        String.format("Caching user %s (%s)", user.getName(), user.getUUID()),
+                        throwable);
     }
 
     private void debugLogUncachedNonPlayer(final Player base) {
         final String typeName = base.getClass().getName();
-        final long count = debugNonPlayerWarnCounts.computeIfAbsent(typeName, name -> new AtomicLong(0)).getAndIncrement();
+        final long count =
+                debugNonPlayerWarnCounts
+                        .computeIfAbsent(typeName, name -> new AtomicLong(0))
+                        .getAndIncrement();
         if (debugMaxWarnsPerType < 0 || count <= debugMaxWarnsPerType) {
             final Throwable throwable = debugPrintStackWithWarn ? new Throwable() : null;
-            ess.getLogger().log(Level.INFO, "Created a User for " + base.getName() + " (" + base.getUniqueId() + ") for non Bukkit type: " + typeName, throwable);
+            ess.getLogger()
+                    .log(
+                            Level.INFO,
+                            "Created a User for "
+                                    + base.getName()
+                                    + " ("
+                                    + base.getUniqueId()
+                                    + ") for non Bukkit type: "
+                                    + typeName,
+                            throwable);
             if (count == debugMaxWarnsPerType) {
-                ess.getLogger().log(Level.WARNING, "Essentials will not log any more warnings for " + typeName + ". Please report this to the EssentialsX team.");
+                ess.getLogger()
+                        .log(
+                                Level.WARNING,
+                                "Essentials will not log any more warnings for "
+                                        + typeName
+                                        + ". Please report this to the EssentialsX team.");
             }
         }
     }

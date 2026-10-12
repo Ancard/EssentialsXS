@@ -1,3 +1,17 @@
+# EssentialsXS 2.22.1
+
+EssentialsXS is the storage fork of EssentialsX. S stands for Storage. This distribution adds selectable YAML or MySQL/MariaDB persistence for the base plugin, Chat, Protect, AntiBuild, Spawn and GeoIP.
+
+**Development status:** the SQL implementation currently has a confirmed critical login regression with LuckPerms context queries. A real login with AuthMe and NotQuests installed stalled Paper and caused watchdog shutdown. The correction is pending; this commit is a development checkpoint, not a production-ready release. See the [correction plan](docs/PLAN-LOGIN-CONTEXT-DEADLOCK.md) and [progress report](docs/BACKEND-PROGRESS.md).
+
+Report EssentialsXS issues in [this fork's issue tracker](https://github.com/Ancard/EssentialsXS/issues). The upstream support channels and download links below describe EssentialsX, not EssentialsXS.
+
+Read the [Storage Guide](docs/ESSENTIALSXS-STORAGE-GUIDE.md) for installation, public defaults, commands, permissions, database tables, migration and recovery. Public artifacts use the EssentialsXS name; Bukkit plugin identifiers and the existing Essentials API remain compatible.
+
+The upstream project information below is retained for attribution. Upstream download links provide upstream builds, not this storage fork.
+
+---
+
 [![EssentialsX](https://i.imgur.com/CP4SZpB.png)](https://essentialsx.net)
 
 [<img alt="Dev Builds" src="https://img.shields.io/badge/-Download_dev_builds-D24939.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAdVBMVEVHcEz////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////qLaloAAAAJnRSTlMA/go0+C4DzJ2IHr/rlvBznq9cGClUqdEiQuR74RHcPbdqw15Ykw3WSecAAAENSURBVFjD7ZdJFoIwEERpEgUBRXCe577/EV2ahBi6dKUvf1//BbpoIEn+lsvI4QIKFuywQI9Q2vkrfA0DMvM0wO/C1RSUH9zGqSmYfiDITUEeBVEQBVHw04Jvd+J8Ygom8Fqf7e0Xy7bA8unKfbWtDkh+eOYO5RAQjNkDMIkde9lJ83fyC+gmy580v0Fv8ALYSOrgFgCtQ5pxkCztKUDDPZzDdXj05ZmCdahZQB34tiOJgFq8ALI6rCsWUs19+cORxRxnngGWDOB5tmuG6Iyi0FCedCFZISHGjqBCBZUzQoaxr0HhAmX/HeACe7ekGoyTdhZDgx6gcaagwCPoznZsIYP2PNJqmYlZqiTy4gka59N5SBiJlAAAAABJRU5ErkJggg==&style=flat-square&logoColor=white" height=32>](https://essentialsx.net/downloads.html)

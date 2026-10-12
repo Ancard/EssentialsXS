@@ -4,13 +4,9 @@ import net.ess3.api.IEssentials;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.io.Reader;
 import java.lang.ref.SoftReference;
 import java.nio.charset.StandardCharsets;
@@ -22,44 +18,44 @@ import java.util.Locale;
 import java.util.Map;
 
 public class BookInput implements IText {
-    private final static HashMap<String, SoftReference<BookInput>> cache = new HashMap<>();
+    private static final HashMap<String, SoftReference<BookInput>> cache = new HashMap<>();
     private final transient List<String> lines;
     private final transient List<String> chapters;
     private final transient Map<String, Integer> bookmarks;
     private final transient long lastChange;
 
-    public BookInput(final String filename, final boolean createFile, final IEssentials ess) throws IOException {
+    public BookInput(final String filename, final boolean createFile, final IEssentials ess)
+            throws IOException {
 
         File file = null;
-        if (file == null || !file.exists()) {
-            file = new File(ess.getDataFolder(), filename + ".txt");
+        if (file == null || !com.earth2me.essentials.config.storage.RepositoryFiles.exists(file)) {
+            file =
+                    com.earth2me.essentials.config.storage.RepositoryText.textFile(
+                            ess.getDataFolder(), filename);
         }
-        if (!file.exists()) {
+        if (!com.earth2me.essentials.config.storage.RepositoryFiles.exists(file)) {
             if (createFile) {
-                try (final InputStream input = ess.getResource(filename + ".txt"); final OutputStream output = new FileOutputStream(file)) {
-                    final byte[] buffer = new byte[1024];
-                    int length = input.read(buffer);
-                    while (length > 0) {
-                        output.write(buffer, 0, length);
-                        length = input.read(buffer);
-                    }
-                }
-                ess.getLogger().info("File " + filename + ".txt does not exist. Creating one for you.");
+                com.earth2me.essentials.config.storage.RepositoryText.create(
+                        file, ess.getResource(filename + ".txt"));
+                ess.getLogger()
+                        .info("File " + filename + ".txt does not exist. Creating one for you.");
             }
         }
-        if (!file.exists()) {
+        if (!com.earth2me.essentials.config.storage.RepositoryFiles.exists(file)) {
             lastChange = 0;
             lines = Collections.emptyList();
             chapters = Collections.emptyList();
             bookmarks = Collections.emptyMap();
             throw new FileNotFoundException("Could not create " + filename + ".txt");
         } else {
-            lastChange = file.lastModified();
+            lastChange = com.earth2me.essentials.config.storage.RepositoryFiles.lastModified(file);
             final boolean readFromfile;
             synchronized (cache) {
                 final SoftReference<BookInput> inputRef = cache.get(file.getName());
                 final BookInput input;
-                if (inputRef == null || (input = inputRef.get()) == null || input.lastChange < lastChange) {
+                if (inputRef == null
+                        || (input = inputRef.get()) == null
+                        || input.lastChange < lastChange) {
                     lines = new ArrayList<>();
                     chapters = new ArrayList<>();
                     bookmarks = new HashMap<>();
@@ -73,7 +69,12 @@ public class BookInput implements IText {
                 }
             }
             if (readFromfile) {
-                final Reader reader = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8);
+                final Reader reader =
+                        new InputStreamReader(
+                                new java.io.ByteArrayInputStream(
+                                        com.earth2me.essentials.config.storage.RepositoryText.bytes(
+                                                file)),
+                                StandardCharsets.UTF_8);
                 final BufferedReader bufferedReader = new BufferedReader(reader);
                 try {
                     int lineNumber = 0;
@@ -83,7 +84,11 @@ public class BookInput implements IText {
                             break;
                         }
                         if (line.length() > 0 && line.charAt(0) == '#') {
-                            bookmarks.put(line.substring(1).toLowerCase(Locale.ENGLISH).replaceAll("&[0-9a-fk]", ""), lineNumber);
+                            bookmarks.put(
+                                    line.substring(1)
+                                            .toLowerCase(Locale.ENGLISH)
+                                            .replaceAll("&[0-9a-fk]", ""),
+                                    lineNumber);
                             chapters.add(line.substring(1).replace('&', '§').replace("§§", "&"));
                         }
                         lines.add(line.replace('&', '§').replace("§§", "&"));

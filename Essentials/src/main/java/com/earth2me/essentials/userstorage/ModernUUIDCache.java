@@ -2,6 +2,7 @@ package com.earth2me.essentials.userstorage;
 
 import com.earth2me.essentials.utils.StringUtil;
 import com.google.common.io.Files;
+
 import net.ess3.api.IEssentials;
 
 import java.io.BufferedInputStream;
@@ -28,24 +29,23 @@ public class ModernUUIDCache {
     private final IEssentials ess;
 
     /**
-     * We use a name to uuid map for offline caching due to the following scenario:
-     * * JRoy and mdcfeYT420 play on a server
-     * * mdcfeYT420 changes his name to mdcfe
-     * * mdcfe doesn't log in the server for 31 days
-     * * JRoy changes his name to mdcfeYT420
-     * * mdcfeYT420 (previously JRoy) logs in the server
-     * In a UUID->Name based map, different uuids now point to the same name
-     * preventing any command which allows for offline players from resolving a
-     * given uuid from a given name.
-     * <p>
-     * This map is backed by a file-based cache. If this cache is missing, a new
-     * one is populated by iterating over all files in the userdata folder and
-     * caching the {@code last-account-name} value.
+     * We use a name to uuid map for offline caching due to the following scenario: * JRoy and
+     * mdcfeYT420 play on a server * mdcfeYT420 changes his name to mdcfe * mdcfe doesn't log in the
+     * server for 31 days * JRoy changes his name to mdcfeYT420 * mdcfeYT420 (previously JRoy) logs
+     * in the server In a UUID->Name based map, different uuids now point to the same name
+     * preventing any command which allows for offline players from resolving a given uuid from a
+     * given name.
+     *
+     * <p>This map is backed by a file-based cache. If this cache is missing, a new one is populated
+     * by iterating over all files in the userdata folder and caching the {@code last-account-name}
+     * value.
      */
     private final ConcurrentHashMap<String, UUID> nameToUuidMap = new ConcurrentHashMap<>();
+
     private final Set<UUID> uuidCache = ConcurrentHashMap.newKeySet();
 
-    private final ScheduledExecutorService writeExecutor = Executors.newSingleThreadScheduledExecutor();
+    private final ScheduledExecutorService writeExecutor =
+            Executors.newSingleThreadScheduledExecutor();
     private final AtomicBoolean pendingNameWrite = new AtomicBoolean(false);
     private final AtomicBoolean pendingUuidWrite = new AtomicBoolean(false);
     private final File nameToUuidFile;
@@ -56,15 +56,19 @@ public class ModernUUIDCache {
         this.nameToUuidFile = new File(ess.getDataFolder(), "usermap.bin");
         this.uuidCacheFile = new File(ess.getDataFolder(), "uuids.bin");
         loadCache();
-        writeExecutor.scheduleWithFixedDelay(() -> {
-            if (pendingNameWrite.compareAndSet(true, false)) {
-                saveNameToUuidCache();
-            }
+        writeExecutor.scheduleWithFixedDelay(
+                () -> {
+                    if (pendingNameWrite.compareAndSet(true, false)) {
+                        saveNameToUuidCache();
+                    }
 
-            if (pendingUuidWrite.compareAndSet(true, false)) {
-                saveUuidCache();
-            }
-        }, 5, 5, TimeUnit.SECONDS);
+                    if (pendingUuidWrite.compareAndSet(true, false)) {
+                        saveUuidCache();
+                    }
+                },
+                5,
+                5,
+                TimeUnit.SECONDS);
     }
 
     protected UUID getCachedUUID(final String name) {
@@ -88,6 +92,13 @@ public class ModernUUIDCache {
     }
 
     protected void updateCache(final UUID uuid, final String name) {
+        if (com.earth2me.essentials.config.storage.BackendSession.active()) {
+            if (uuidCache.contains(uuid)
+                    && (name == null || uuid.equals(nameToUuidMap.get(getSanitizedName(name))))) {
+                return;
+            }
+            com.earth2me.essentials.config.storage.BackendSession.current().requireWritable();
+        }
         if (uuidCache.add(uuid)) {
             pendingUuidWrite.set(true);
         }
@@ -96,10 +107,22 @@ public class ModernUUIDCache {
             final UUID replacedUuid = nameToUuidMap.put(sanitizedName, uuid);
             if (!uuid.equals(replacedUuid)) {
                 if (ess.getSettings().isDebug()) {
-                    ess.getLogger().log(Level.WARNING, "Replaced UUID during cache update for " + sanitizedName + ": " + replacedUuid + " -> " + uuid);
+                    ess.getLogger()
+                            .log(
+                                    Level.WARNING,
+                                    "Replaced UUID during cache update for "
+                                            + sanitizedName
+                                            + ": "
+                                            + replacedUuid
+                                            + " -> "
+                                            + uuid);
                 }
                 pendingNameWrite.set(true);
             }
+        }
+        if (com.earth2me.essentials.config.storage.BackendSession.active()) {
+            saveNameToUuidCache();
+            pendingNameWrite.set(false);
         }
     }
 
@@ -126,9 +149,40 @@ public class ModernUUIDCache {
         if (!toRemove.isEmpty()) {
             pendingNameWrite.set(true);
         }
+        if (com.earth2me.essentials.config.storage.BackendSession.active()) {
+            saveNameToUuidCache();
+            pendingNameWrite.set(false);
+        }
     }
 
     private void loadCache() {
+        if (com.earth2me.essentials.config.storage.BackendSession.active()) {
+            try {
+                final com.earth2me.essentials.config.storage.BackendSession session =
+                        com.earth2me.essentials.config.storage.BackendSession.current();
+                for (String key : session.snapshot().keySet()) {
+                    if (key.startsWith("core/userdata/")) {
+                        uuidCache.add(UUID.fromString(key.substring(14, key.length() - 4)));
+                    }
+                }
+                final String names = session.read("core/@names");
+                if (names != null) {
+                    for (Map.Entry<Object, org.spongepowered.configurate.CommentedConfigurationNode>
+                            entry :
+                                    com.earth2me.essentials.config.storage.BackendSession.decode(
+                                                    names)
+                                            .childrenMap()
+                                            .entrySet()) {
+                        nameToUuidMap.put(
+                                entry.getKey().toString(),
+                                UUID.fromString(entry.getValue().getString()));
+                    }
+                }
+                return;
+            } catch (Exception e) {
+                throw new IllegalStateException("Cannot load the user identity index.", e);
+            }
+        }
         final boolean debug = ess.getSettings().isDebug();
 
         try {
@@ -145,13 +199,23 @@ public class ModernUUIDCache {
 
             nameToUuidMap.clear();
 
-            try (final DataInputStream dis = new DataInputStream(new BufferedInputStream(new FileInputStream(nameToUuidFile)))) {
+            try (final DataInputStream dis =
+                    new DataInputStream(
+                            new BufferedInputStream(new FileInputStream(nameToUuidFile)))) {
                 while (dis.available() > 0) {
                     final String username = dis.readUTF();
                     final UUID uuid = new UUID(dis.readLong(), dis.readLong());
                     final UUID previous = nameToUuidMap.put(username, uuid);
                     if (previous != null && debug) {
-                        ess.getLogger().log(Level.WARNING, "Replaced UUID during cache load for " + username + ": " + previous + " -> " + uuid);
+                        ess.getLogger()
+                                .log(
+                                        Level.WARNING,
+                                        "Replaced UUID during cache load for "
+                                                + username
+                                                + ": "
+                                                + previous
+                                                + " -> "
+                                                + uuid);
                     }
                 }
             }
@@ -173,7 +237,9 @@ public class ModernUUIDCache {
 
             uuidCache.clear();
 
-            try (final DataInputStream dis = new DataInputStream(new BufferedInputStream(new FileInputStream(uuidCacheFile)))) {
+            try (final DataInputStream dis =
+                    new DataInputStream(
+                            new BufferedInputStream(new FileInputStream(uuidCacheFile)))) {
                 while (dis.available() > 0) {
                     final UUID uuid = new UUID(dis.readLong(), dis.readLong());
                     if (uuidCache.contains(uuid) && debug) {
@@ -188,6 +254,9 @@ public class ModernUUIDCache {
     }
 
     private void saveUuidCache() {
+        if (com.earth2me.essentials.config.storage.BackendSession.active()) {
+            return;
+        }
         if (ess.getSettings().isDebug()) {
             ess.getLogger().log(Level.INFO, "Saving UUID cache to disk...");
         }
@@ -204,6 +273,22 @@ public class ModernUUIDCache {
     }
 
     private void saveNameToUuidCache() {
+        if (com.earth2me.essentials.config.storage.BackendSession.active()) {
+            try {
+                final org.spongepowered.configurate.CommentedConfigurationNode node =
+                        org.spongepowered.configurate.CommentedConfigurationNode.root();
+                for (Map.Entry<String, UUID> entry : nameToUuidMap.entrySet()) {
+                    node.node(entry.getKey()).set(entry.getValue().toString());
+                }
+                com.earth2me.essentials.config.storage.BackendSession.current()
+                        .write(
+                                "core/@names",
+                                com.earth2me.essentials.config.storage.BackendSession.encode(node));
+                return;
+            } catch (Exception e) {
+                throw new IllegalStateException("Cannot accept the user identity index.", e);
+            }
+        }
         if (ess.getSettings().isDebug()) {
             ess.getLogger().log(Level.INFO, "Saving Name->UUID cache to disk...");
         }
@@ -225,16 +310,19 @@ public class ModernUUIDCache {
     }
 
     public static void writeUuidCache(final File file, Set<UUID> uuids) throws IOException {
-        try (final DataOutputStream dos = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(file)))) {
-            for (final UUID uuid: uuids) {
+        try (final DataOutputStream dos =
+                new DataOutputStream(new BufferedOutputStream(new FileOutputStream(file)))) {
+            for (final UUID uuid : uuids) {
                 dos.writeLong(uuid.getMostSignificantBits());
                 dos.writeLong(uuid.getLeastSignificantBits());
             }
         }
     }
 
-    public static void writeNameUuidMap(final File file, final Map<String, UUID> nameToUuidMap) throws IOException {
-        try (final DataOutputStream dos = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(file)))) {
+    public static void writeNameUuidMap(final File file, final Map<String, UUID> nameToUuidMap)
+            throws IOException {
+        try (final DataOutputStream dos =
+                new DataOutputStream(new BufferedOutputStream(new FileOutputStream(file)))) {
             for (final Map.Entry<String, UUID> entry : nameToUuidMap.entrySet()) {
                 dos.writeUTF(entry.getKey());
                 final UUID uuid = entry.getValue();

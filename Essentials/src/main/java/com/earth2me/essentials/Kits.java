@@ -1,9 +1,13 @@
 package com.earth2me.essentials;
 
+import static com.earth2me.essentials.I18n.capitalCase;
+
 import com.earth2me.essentials.config.ConfigurateUtil;
 import com.earth2me.essentials.config.EssentialsConfiguration;
 import com.earth2me.essentials.utils.NumberUtil;
+
 import net.ess3.api.TranslatableException;
+
 import org.spongepowered.configurate.CommentedConfigurationNode;
 
 import java.io.File;
@@ -14,8 +18,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-import static com.earth2me.essentials.I18n.capitalCase;
-
 public class Kits implements IConf {
     private final IEssentials ess;
     private final EssentialsConfiguration rootConfig;
@@ -24,7 +26,9 @@ public class Kits implements IConf {
 
     public Kits(final IEssentials essentials) {
         this.ess = essentials;
-        this.rootConfig = new EssentialsConfiguration(new File(essentials.getDataFolder(), "kits.yml"), "/kits.yml");
+        this.rootConfig =
+                new EssentialsConfiguration(
+                        new File(essentials.getDataFolder(), "kits.yml"), "/kits.yml");
 
         reloadConfig();
     }
@@ -39,7 +43,10 @@ public class Kits implements IConf {
         return rootConfig.getFile();
     }
 
-    private void parseKit(final String kitName, final CommentedConfigurationNode kitSection, final EssentialsConfiguration parentConfig) {
+    private void parseKit(
+            final String kitName,
+            final CommentedConfigurationNode kitSection,
+            final EssentialsConfiguration parentConfig) {
         if (kitSection.isMap()) {
             final String effectiveKitName = kitName.toLowerCase(Locale.ENGLISH);
             kitToConfigMap.put(effectiveKitName, parentConfig);
@@ -54,18 +61,21 @@ public class Kits implements IConf {
         // Kits from kits.yml file
         final CommentedConfigurationNode fileKits = rootConfig.getSection("kits");
         if (fileKits != null) {
-            for (final Map.Entry<String, CommentedConfigurationNode> kitEntry : ConfigurateUtil.getMap(fileKits).entrySet()) {
+            for (final Map.Entry<String, CommentedConfigurationNode> kitEntry :
+                    ConfigurateUtil.getMap(fileKits).entrySet()) {
                 parseKit(kitEntry.getKey(), kitEntry.getValue(), rootConfig);
             }
         }
 
         // Kits from kits subdirectory
         final File kitsFolder = new File(this.ess.getDataFolder(), "kits");
-        if (!kitsFolder.exists() || !kitsFolder.isDirectory()) {
+        if (!com.earth2me.essentials.config.storage.BackendSession.active()
+                && (!kitsFolder.exists() || !kitsFolder.isDirectory())) {
             return;
         }
 
-        final File[] kitsFiles = kitsFolder.listFiles();
+        final File[] kitsFiles =
+                com.earth2me.essentials.config.storage.RepositoryFiles.listFiles(kitsFolder);
 
         //noinspection ConstantConditions - will not be null, conditions checked above.
         for (final File kitFile : kitsFiles) {
@@ -74,7 +84,8 @@ public class Kits implements IConf {
                 kitConfig.load();
                 final CommentedConfigurationNode kits = kitConfig.getSection("kits");
                 if (kits != null) {
-                    for (final Map.Entry<String, CommentedConfigurationNode> kitEntry : ConfigurateUtil.getMap(kits).entrySet()) {
+                    for (final Map.Entry<String, CommentedConfigurationNode> kitEntry :
+                            ConfigurateUtil.getMap(kits).entrySet()) {
                         parseKit(kitEntry.getKey(), kitEntry.getValue(), kitConfig);
                     }
                 }
@@ -82,9 +93,7 @@ public class Kits implements IConf {
         }
     }
 
-    /**
-     * Should be used for EssentialsUpgrade conversions <b>only</b>.
-     */
+    /** Should be used for EssentialsUpgrade conversions <b>only</b>. */
     public EssentialsConfiguration getRootConfig() {
         return rootConfig;
     }
@@ -100,7 +109,8 @@ public class Kits implements IConf {
         return null;
     }
 
-    // Tries to find an existing kit name that matches the given name, ignoring case. Returns null if no match.
+    // Tries to find an existing kit name that matches the given name, ignoring case. Returns null
+    // if no match.
     public String matchKit(final String name) {
         if (name != null) {
             for (final String kitName : kitMap.keySet()) {
@@ -113,25 +123,33 @@ public class Kits implements IConf {
     }
 
     public void addKit(String name, final List<String> lines, final long delay) {
-        name = name.replace('.', '_').replace('/', '_').toLowerCase(Locale.ENGLISH);
-        // Will overwrite but w/e
-        rootConfig.setProperty("kits." + name + ".delay", delay);
-        rootConfig.setProperty("kits." + name + ".items", lines);
-        parseKits();
-        rootConfig.save();
+        synchronized (com.earth2me.essentials.config.storage.BackendSession.mutationLock()) {
+            name = name.replace('.', '_').replace('/', '_').toLowerCase(Locale.ENGLISH);
+            // Will overwrite but w/e
+            rootConfig.setProperty("kits." + name + ".delay", delay);
+            rootConfig.setProperty("kits." + name + ".items", lines);
+            parseKits();
+            rootConfig.save();
+        }
     }
 
     public void removeKit(String name) {
-        name = name.replace('.', '_').replace('/', '_').toLowerCase(Locale.ENGLISH);
-        if (!kitToConfigMap.containsKey(name) || !kitMap.containsKey(name)) {
-            return;
+        synchronized (com.earth2me.essentials.config.storage.BackendSession.mutationLock()) {
+            name = name.replace('.', '_').replace('/', '_').toLowerCase(Locale.ENGLISH);
+            if (!kitToConfigMap.containsKey(name) || !kitMap.containsKey(name)) {
+                return;
+            }
+
+            final EssentialsConfiguration config = kitToConfigMap.get(name);
+            config.removeProperty("kits." + name);
+
+            if (com.earth2me.essentials.config.storage.RepositoryFiles.managed(config.getFile())) {
+                config.save();
+            } else {
+                config.blockingSave();
+            }
+            parseKits();
         }
-
-        final EssentialsConfiguration config = kitToConfigMap.get(name);
-        config.removeProperty("kits." + name);
-
-        config.blockingSave();
-        parseKits();
     }
 
     public String listKits(final net.ess3.api.IEssentials ess, final User user) throws Exception {
@@ -140,10 +158,13 @@ public class Kits implements IConf {
             for (final String kitItem : kitMap.keySet()) {
                 if (user == null) {
                     list.append(" ").append(capitalCase(kitItem));
-                } else if (user.isAuthorized("essentials.kits." + kitItem.toLowerCase(Locale.ENGLISH))) {
+                } else if (user.isAuthorized(
+                        "essentials.kits." + kitItem.toLowerCase(Locale.ENGLISH))) {
                     String cost = "";
                     String name = capitalCase(kitItem);
-                    final BigDecimal costPrice = new Trade("kit-" + kitItem.toLowerCase(Locale.ENGLISH), ess).getCommandCost(user);
+                    final BigDecimal costPrice =
+                            new Trade("kit-" + kitItem.toLowerCase(Locale.ENGLISH), ess)
+                                    .getCommandCost(user);
                     if (costPrice.signum() > 0) {
                         cost = user.playerTl("kitCost", NumberUtil.displayCurrency(costPrice, ess));
                     }
@@ -163,6 +184,5 @@ public class Kits implements IConf {
         } catch (final Exception ex) {
             throw new TranslatableException(ex, "kitError");
         }
-
     }
 }

@@ -1,5 +1,7 @@
 package com.earth2me.essentials.config;
 
+import static com.earth2me.essentials.I18n.tlLiteral;
+
 import com.earth2me.essentials.Essentials;
 import com.earth2me.essentials.adventure.AdventureUtil;
 import com.earth2me.essentials.config.annotations.DeleteIfIncomplete;
@@ -13,7 +15,14 @@ import com.earth2me.essentials.config.serializers.CommandCooldownSerializer;
 import com.earth2me.essentials.config.serializers.LocationTypeSerializer;
 import com.earth2me.essentials.config.serializers.MailMessageSerializer;
 import com.earth2me.essentials.config.serializers.MaterialTypeSerializer;
+import com.earth2me.essentials.config.storage.BackendSession;
+import com.earth2me.essentials.config.storage.CachedConfigurationStore;
+import com.earth2me.essentials.config.storage.ConfigurationStore;
+import com.earth2me.essentials.config.storage.RepositoryFiles;
+import com.earth2me.essentials.config.storage.YamlConfigurationStore;
+
 import net.essentialsx.api.v2.services.mail.MailMessage;
+
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.spongepowered.configurate.CommentedConfigurationNode;
@@ -48,31 +57,40 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 
-import static com.earth2me.essentials.I18n.tlLiteral;
-
 public class EssentialsConfiguration {
     private static volatile ExecutorService EXECUTOR_SERVICE = Executors.newSingleThreadExecutor();
-    private static final ObjectMapper.Factory MAPPER_FACTORY = ObjectMapper.factoryBuilder()
-            .addProcessor(DeleteOnEmpty.class, (data, value) -> new DeleteOnEmptyProcessor())
-            .addProcessor(DeleteIfIncomplete.class, (data, value) -> new DeleteIfIncompleteProcessor())
-            .build();
-    private static final TypeSerializerCollection SERIALIZERS = TypeSerializerCollection.defaults().childBuilder()
-            .registerAnnotatedObjects(MAPPER_FACTORY)
-            .register(BigDecimal.class, new BigDecimalTypeSerializer())
-            .register(LazyLocation.class, new LocationTypeSerializer())
-            .register(Material.class, new MaterialTypeSerializer())
-            .register(CommandCooldown.class, new CommandCooldownSerializer())
-            .register(MailMessage.class, new MailMessageSerializer())
-            .build();
+    private static final ObjectMapper.Factory MAPPER_FACTORY =
+            ObjectMapper.factoryBuilder()
+                    .addProcessor(
+                            DeleteOnEmpty.class, (data, value) -> new DeleteOnEmptyProcessor())
+                    .addProcessor(
+                            DeleteIfIncomplete.class,
+                            (data, value) -> new DeleteIfIncompleteProcessor())
+                    .build();
+    private static final TypeSerializerCollection SERIALIZERS =
+            TypeSerializerCollection.defaults()
+                    .childBuilder()
+                    .registerAnnotatedObjects(MAPPER_FACTORY)
+                    .register(BigDecimal.class, new BigDecimalTypeSerializer())
+                    .register(LazyLocation.class, new LocationTypeSerializer())
+                    .register(Material.class, new MaterialTypeSerializer())
+                    .register(CommandCooldown.class, new CommandCooldownSerializer())
+                    .register(MailMessage.class, new MailMessageSerializer())
+                    .build();
 
     private final AtomicInteger pendingWrites = new AtomicInteger(0);
+    private static final java.util.concurrent.ConcurrentMap<File, Throwable> FAILED_WRITES =
+            new java.util.concurrent.ConcurrentHashMap<>();
     private final AtomicBoolean transaction = new AtomicBoolean(false);
     private Class<?> resourceClass = EssentialsConfiguration.class;
     protected final File configFile;
-    private final YamlConfigurationLoader loader;
+    private final long yamlGeneration;
+    private final ConfigurationStore store;
     private final String templateName;
     private CommentedConfigurationNode configurationNode;
     private Runnable saveHook;
+    private final java.util.concurrent.atomic.AtomicReference<Throwable> saveFailure =
+            new java.util.concurrent.atomic.AtomicReference<>();
 
     public EssentialsConfiguration(final File configFile) {
         this(configFile, null);
@@ -82,22 +100,46 @@ public class EssentialsConfiguration {
         this(configFile, templateName, (String) null);
     }
 
-    public EssentialsConfiguration(final File configFile, final String templateName, final Class<?> resourceClass) {
+    public EssentialsConfiguration(
+            final File configFile, final String templateName, final Class<?> resourceClass) {
         this(configFile, templateName, (String) null);
         this.resourceClass = resourceClass;
     }
 
-    public EssentialsConfiguration(final File configFile, final String templateName, final String header) {
+    public EssentialsConfiguration(
+            final File configFile, final String templateName, final String header) {
+        this(configFile, templateName, header, null);
+    }
+
+    EssentialsConfiguration(
+            final File configFile,
+            final String templateName,
+            final String header,
+            final ConfigurationStore store) {
         this.configFile = configFile;
-        this.loader = YamlConfigurationLoader.builder()
-                .defaultOptions(opts -> opts
-                        .header(header)
-                        .serializers(SERIALIZERS))
-                .headerMode(HeaderMode.PRESET)
-                .nodeStyle(NodeStyle.BLOCK)
-                .indent(2)
-                .file(configFile)
-                .build();
+        yamlGeneration =
+                com.earth2me.essentials.config.storage.YamlRepositories.generation(configFile);
+        final ConfigurationStore selected =
+                store == null
+                        ? new YamlConfigurationStore(
+                                YamlConfigurationLoader.builder()
+                                        .defaultOptions(
+                                                opts ->
+                                                        opts.header(header)
+                                                                .serializers(SERIALIZERS))
+                                        .headerMode(HeaderMode.PRESET)
+                                        .nodeStyle(NodeStyle.BLOCK)
+                                        .indent(2)
+                                        .file(configFile)
+                                        .build())
+                        : store;
+        this.store =
+                store == null && RepositoryFiles.managed(configFile)
+                        ? new CachedConfigurationStore(
+                                BackendSession.current(),
+                                BackendSession.current().catalog().key(configFile),
+                                selected)
+                        : selected;
         this.templateName = templateName;
     }
 
@@ -109,7 +151,11 @@ public class EssentialsConfiguration {
         try {
             getRootNode().set(holderClass, holder);
         } catch (SerializationException e) {
-            Essentials.getWrappedLogger().log(Level.SEVERE, "Error while saving user config: " + configFile.getName(), e);
+            Essentials.getWrappedLogger()
+                    .log(
+                            Level.SEVERE,
+                            "Error while saving user config: " + configFile.getName(),
+                            e);
             throw new RuntimeException(e);
         }
     }
@@ -139,12 +185,16 @@ public class EssentialsConfiguration {
     public Map<String, LazyLocation> getLocationSectionMap(final String path) {
         final CommentedConfigurationNode node = getSection(path);
         final Map<String, LazyLocation> result = new HashMap<>();
-        for (final Map.Entry<String, CommentedConfigurationNode> entry : ConfigurateUtil.getMap(node).entrySet()) {
+        for (final Map.Entry<String, CommentedConfigurationNode> entry :
+                ConfigurateUtil.getMap(node).entrySet()) {
             final CommentedConfigurationNode jailNode = entry.getValue();
             try {
-                result.put(entry.getKey().toLowerCase(Locale.ENGLISH), jailNode.get(LazyLocation.class));
+                result.put(
+                        entry.getKey().toLowerCase(Locale.ENGLISH),
+                        jailNode.get(LazyLocation.class));
             } catch (SerializationException e) {
-                Essentials.getWrappedLogger().log(Level.WARNING, "Error serializing key " + entry.getKey(), e);
+                Essentials.getWrappedLogger()
+                        .log(Level.WARNING, "Error serializing key " + entry.getKey(), e);
             }
         }
         return result;
@@ -296,7 +346,7 @@ public class EssentialsConfiguration {
     }
 
     public CommentedConfigurationNode newSection() {
-        return loader.createNode();
+        return store.createNode();
     }
 
     public Set<String> getKeys() {
@@ -332,6 +382,7 @@ public class EssentialsConfiguration {
     }
 
     private void setInternal(final String path, final Object value) {
+        ensureWritable();
         try {
             toSplitRoot(path, configurationNode).set(value);
         } catch (SerializationException e) {
@@ -351,23 +402,65 @@ public class EssentialsConfiguration {
         return !toSplitRoot(path, configurationNode).isNull();
     }
 
-    public CommentedConfigurationNode toSplitRoot(String path, final CommentedConfigurationNode node) {
+    public CommentedConfigurationNode toSplitRoot(
+            String path, final CommentedConfigurationNode node) {
         if (path == null) {
             return node;
         }
         path = path.startsWith(".") ? path.substring(1) : path;
-        return node.node(path.contains(".") ? path.split("\\.") : new Object[]{path});
+        return node.node(path.contains(".") ? path.split("\\.") : new Object[] {path});
     }
 
     public synchronized void load() {
+        if (store instanceof CachedConfigurationStore) {
+            try {
+                configurationNode = store.load();
+                if (configurationNode.empty() && templateName != null) {
+                    try (InputStream input = resourceClass.getResourceAsStream(templateName)) {
+                        if (input == null) {
+                            throw new IllegalStateException("Missing configuration template.");
+                        }
+                        configurationNode =
+                                YamlConfigurationLoader.builder()
+                                        .defaultOptions(o -> store.createNode().options())
+                                        .source(
+                                                () ->
+                                                        new java.io.BufferedReader(
+                                                                new java.io.InputStreamReader(
+                                                                        input,
+                                                                        java.nio.charset
+                                                                                .StandardCharsets
+                                                                                .UTF_8)))
+                                        .build()
+                                        .load();
+                    }
+                    store.save(configurationNode.copy());
+                }
+                return;
+            } catch (Exception e) {
+                throw new IllegalStateException("Cannot load the persistent resource.", e);
+            }
+        }
         if (pendingWrites.get() != 0) {
-            Essentials.getWrappedLogger().log(Level.INFO, "Parsing config file {0} has been aborted due to {1} current pending write(s).", new Object[]{configFile, pendingWrites.get()});
+            Essentials.getWrappedLogger()
+                    .log(
+                            Level.INFO,
+                            "Parsing config file {0} has been aborted due to {1} current pending"
+                                    + " write(s).",
+                            new Object[] {configFile, pendingWrites.get()});
             return;
         }
 
         if (configFile.getParentFile() != null && !configFile.getParentFile().exists()) {
             if (!configFile.getParentFile().mkdirs()) {
-                Essentials.getWrappedLogger().log(Level.SEVERE, AdventureUtil.getAdventureFacet().miniToLegacy(tlLiteral("failedToCreateConfig", configFile.toString())));
+                Essentials.getWrappedLogger()
+                        .log(
+                                Level.SEVERE,
+                                AdventureUtil.getAdventureFacet()
+                                        .miniToLegacy(
+                                                tlLiteral(
+                                                        "failedToCreateConfig",
+                                                        configFile.toString())));
                 return;
             }
         }
@@ -379,29 +472,59 @@ public class EssentialsConfiguration {
                 convertAltFile();
             } else if (templateName != null) {
                 try (final InputStream is = resourceClass.getResourceAsStream(templateName)) {
-                    Essentials.getWrappedLogger().log(Level.INFO, AdventureUtil.getAdventureFacet().miniToLegacy(tlLiteral("creatingConfigFromTemplate", configFile.toString())));
+                    Essentials.getWrappedLogger()
+                            .log(
+                                    Level.INFO,
+                                    AdventureUtil.getAdventureFacet()
+                                            .miniToLegacy(
+                                                    tlLiteral(
+                                                            "creatingConfigFromTemplate",
+                                                            configFile.toString())));
                     Files.copy(is, configFile.toPath());
                 } catch (IOException e) {
-                    Essentials.getWrappedLogger().log(Level.SEVERE, AdventureUtil.getAdventureFacet().miniToLegacy(tlLiteral("failedToWriteConfig", configFile.toString())), e);
+                    Essentials.getWrappedLogger()
+                            .log(
+                                    Level.SEVERE,
+                                    AdventureUtil.getAdventureFacet()
+                                            .miniToLegacy(
+                                                    tlLiteral(
+                                                            "failedToWriteConfig",
+                                                            configFile.toString())),
+                                    e);
                 }
             }
         }
 
         try {
-            configurationNode = loader.load();
+            configurationNode = store.load();
         } catch (final ParsingException e) {
-            final File broken = new File(configFile.getAbsolutePath() + ".broken." + System.currentTimeMillis());
+            final File broken =
+                    new File(
+                            configFile.getAbsolutePath() + ".broken." + System.currentTimeMillis());
             if (configFile.renameTo(broken)) {
-                Essentials.getWrappedLogger().log(Level.SEVERE, "The file " + configFile + " is broken, it has been renamed to " + broken, e.getCause());
+                Essentials.getWrappedLogger()
+                        .log(
+                                Level.SEVERE,
+                                "The file "
+                                        + configFile
+                                        + " is broken, it has been renamed to "
+                                        + broken,
+                                e.getCause());
                 return;
             }
-            Essentials.getWrappedLogger().log(Level.SEVERE, "The file " + configFile + " is broken. A backup file has failed to be created", e.getCause());
+            Essentials.getWrappedLogger()
+                    .log(
+                            Level.SEVERE,
+                            "The file "
+                                    + configFile
+                                    + " is broken. A backup file has failed to be created",
+                            e.getCause());
         } catch (final ConfigurateException e) {
             Essentials.getWrappedLogger().log(Level.SEVERE, e.getMessage(), e);
         } finally {
             // Something is wrong! We need a node! I hope the backup worked!
             if (configurationNode == null) {
-                configurationNode = loader.createNode();
+                configurationNode = store.createNode();
             }
         }
     }
@@ -411,7 +534,6 @@ public class EssentialsConfiguration {
     }
 
     public void convertLegacyFile() {
-
     }
 
     public boolean altFileExists() {
@@ -419,13 +541,12 @@ public class EssentialsConfiguration {
     }
 
     public void convertAltFile() {
-
     }
 
     /**
      * Begins a transaction.
-     * <p>
-     * A transaction informs Essentials to pause the saving of data. This is should be used when
+     *
+     * <p>A transaction informs Essentials to pause the saving of data. This is should be used when
      * bulk operations are being done and data shouldn't be saved until after the transaction has
      * been completed.
      */
@@ -461,32 +582,92 @@ public class EssentialsConfiguration {
     }
 
     public synchronized void blockingSave() {
+        if (store instanceof CachedConfigurationStore) {
+            throw new IllegalStateException(
+                    "Use the asynchronous backend flush barrier for SQL resources.");
+        }
         try {
             delaySave();
             getExecutor().submit(() -> {}).get();
+            if (saveFailure.get() != null || !FAILED_WRITES.isEmpty()) {
+                throw new IllegalStateException(
+                        "A previous snapshot could not be persisted.",
+                        saveFailure.get() != null
+                                ? saveFailure.get()
+                                : FAILED_WRITES.values().iterator().next());
+            }
         } catch (final InterruptedException | ExecutionException e) {
-            Essentials.getWrappedLogger().log(Level.SEVERE, e.getMessage(), e);
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            throw new IllegalStateException("Snapshot flush did not complete.", e);
         }
     }
 
     private void delaySave() {
+        ensureWritable();
         if (saveHook != null) {
             saveHook.run();
         }
 
+        // Capture the node before handing work to the executor; workers must not read live state.
+        final CommentedConfigurationNode snapshot = configurationNode.copy();
+        if (store instanceof CachedConfigurationStore) {
+            storeSave(snapshot);
+            return;
+        }
         pendingWrites.incrementAndGet();
         try {
-            getExecutor().submit(new ConfigurationSaveTask(loader, () -> configurationNode.copy(), pendingWrites));
+            getExecutor()
+                    .submit(
+                            new ConfigurationSaveTask(
+                                    store, () -> snapshot, pendingWrites, this::recordSaveResult));
         } catch (RejectedExecutionException rex) {
             try {
-                synchronized (loader) {
-                    loader.save(configurationNode.copy());
+                synchronized (store) {
+                    store.save(snapshot);
+                    recordSaveResult(null);
                 }
             } catch (ConfigurateException e) {
+                recordSaveResult(e);
                 Essentials.getWrappedLogger().log(Level.SEVERE, e.getMessage(), e);
             } finally {
                 pendingWrites.decrementAndGet();
             }
+        }
+    }
+
+    private void recordSaveResult(Throwable failure) {
+        saveFailure.set(failure);
+        if (failure == null) {
+            FAILED_WRITES.remove(configFile.getAbsoluteFile());
+        } else {
+            FAILED_WRITES.put(configFile.getAbsoluteFile(), failure);
+        }
+    }
+
+    public void ensureWritable() {
+        if (!(store instanceof CachedConfigurationStore)
+                && yamlGeneration
+                        != com.earth2me.essentials.config.storage.YamlRepositories.generation(
+                                configFile)) {
+            throw new IllegalStateException(
+                    "A deleted YAML resource cannot be saved by an older configuration.");
+        }
+        if (com.earth2me.essentials.config.storage.BackendMigration.busy()) {
+            throw new IllegalStateException(
+                    "Persistent mutations are suspended for backend maintenance.");
+        }
+        if (store instanceof CachedConfigurationStore) {
+            ((CachedConfigurationStore) store).requireWritable();
+        }
+    }
+
+    private void storeSave(CommentedConfigurationNode snapshot) {
+        try {
+            store.save(snapshot);
+        } catch (ConfigurateException e) {
+            throw new IllegalStateException("Cannot accept the persistent snapshot.", e);
         }
     }
 
@@ -503,8 +684,11 @@ public class EssentialsConfiguration {
     }
 
     private static synchronized ExecutorService getExecutor() {
-        if (EXECUTOR_SERVICE == null || EXECUTOR_SERVICE.isShutdown() || EXECUTOR_SERVICE.isTerminated()) {
+        if (EXECUTOR_SERVICE == null
+                || EXECUTOR_SERVICE.isShutdown()
+                || EXECUTOR_SERVICE.isTerminated()) {
             EXECUTOR_SERVICE = Executors.newSingleThreadExecutor();
+            FAILED_WRITES.clear();
         }
         return EXECUTOR_SERVICE;
     }

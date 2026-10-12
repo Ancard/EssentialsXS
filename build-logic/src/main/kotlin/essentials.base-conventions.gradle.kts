@@ -10,8 +10,8 @@ plugins {
 val baseExtension = extensions.create<EssentialsBaseExtension>("essentials", project)
 
 val checkstyleVersion = "8.36.2"
-val paperVersion = "26.3-pre-2.build.0-alpha"
-val paperTestVersion = "1.21.8-R0.1-SNAPSHOT"
+val paperVersion = "26.3.build.175-stable"
+val paperTestVersion = "1.21.8-R0.1-20250906.215025-55"
 val junit5Version = "5.12.2"
 val junitPlatformVersion = "1.12.2"
 val mockitoVersion = "5.18.0"
@@ -111,6 +111,9 @@ tasks {
         options.addBooleanOption("Xdoclint:none", true)
     }
     withType<Jar> {
+        if (project.name.startsWith("EssentialsX")) {
+            archiveBaseName.set(project.name.replaceFirst("EssentialsX", "EssentialsXS"))
+        }
         archiveVersion.set(rootProject.ext["FULL_VERSION"] as String)
         manifest {
             attributes("paperweight-mappings-namespace" to "mojang")

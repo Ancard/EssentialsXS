@@ -34,6 +34,7 @@ plugins {
 }
 
 rootProject.name = "EssentialsXParent"
+include(":storage-api", ":storage-jdbc")
 
 // Modules
 sequenceOf(

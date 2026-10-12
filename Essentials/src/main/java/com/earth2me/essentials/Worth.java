@@ -5,7 +5,9 @@ import com.earth2me.essentials.config.ConfigurateUtil;
 import com.earth2me.essentials.config.EssentialsConfiguration;
 import com.earth2me.essentials.craftbukkit.Inventories;
 import com.earth2me.essentials.utils.VersionUtil;
+
 import net.ess3.api.TranslatableException;
+
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 import org.spongepowered.configurate.CommentedConfigurationNode;
@@ -25,19 +27,23 @@ public class Worth implements IConf {
     /**
      * Get the value of an item stack from the config.
      *
-     * @param ess       The Essentials instance.
+     * @param ess The Essentials instance.
      * @param itemStack The item stack to look up in the config.
      * @return The price from the config.
      */
     public BigDecimal getPrice(final IEssentials ess, final ItemStack itemStack) {
         BigDecimal result = BigDecimal.ONE.negate();
 
-        final String itemname = itemStack.getType().toString().toLowerCase(Locale.ENGLISH).replace("_", "");
+        final String itemname =
+                itemStack.getType().toString().toLowerCase(Locale.ENGLISH).replace("_", "");
 
         if (VersionUtil.PRE_FLATTENING) {
             // Check for matches with data value from stack
             // Note that we always default to BigDecimal.ONE.negate(), equivalent to -1
-            result = config.getBigDecimal("worth." + itemname + "." + itemStack.getDurability(), BigDecimal.ONE.negate());
+            result =
+                    config.getBigDecimal(
+                            "worth." + itemname + "." + itemStack.getDurability(),
+                            BigDecimal.ONE.negate());
         }
 
         // Check for matches with data value 0
@@ -67,15 +73,21 @@ public class Worth implements IConf {
     /**
      * Get the amount of items to be sold from a player's inventory.
      *
-     * @param ess        The Essentials instance.
-     * @param user       The user attempting to sell the item.
-     * @param is         A stack of the item to search the inventory for.
-     * @param args       The amount to try to sell.
+     * @param ess The Essentials instance.
+     * @param user The user attempting to sell the item.
+     * @param is A stack of the item to search the inventory for.
+     * @param args The amount to try to sell.
      * @param isBulkSell Whether or not to try and bulk sell all items.
      * @return The amount of items to sell from the player's inventory.
      * @throws Exception Thrown if trying to sell air or an invalid amount.
      */
-    public int getAmount(final IEssentials ess, final User user, final ItemStack is, final String[] args, final boolean isBulkSell) throws Exception {
+    public int getAmount(
+            final IEssentials ess,
+            final User user,
+            final ItemStack is,
+            final String[] args,
+            final boolean isBulkSell)
+            throws Exception {
         if (is == null || is.getType() == Material.AIR) {
             throw new TranslatableException("itemSellAir");
         }
@@ -134,21 +146,30 @@ public class Worth implements IConf {
     /**
      * Set the price of an item and save it to the config.
      *
-     * @param ess       The Essentials instance.
+     * @param ess The Essentials instance.
      * @param itemStack A stack of the item to save.
-     * @param price     The new price of the item.
+     * @param price The new price of the item.
      */
     public void setPrice(final IEssentials ess, final ItemStack itemStack, final double price) {
-        String path = "worth." + itemStack.getType().toString().toLowerCase(Locale.ENGLISH).replace("_", "");
+        synchronized (com.earth2me.essentials.config.storage.BackendSession.mutationLock()) {
+            String path =
+                    "worth."
+                            + itemStack
+                                    .getType()
+                                    .toString()
+                                    .toLowerCase(Locale.ENGLISH)
+                                    .replace("_", "");
 
-        // Spigot 1.13+ throws an exception if a 1.13+ plugin even *attempts* to do set data.
-        if (VersionUtil.PRE_FLATTENING && itemStack.getType().getData() == null) {
-            // Bukkit-bug: getDurability still contains the correct value, while getData().getData() is 0.
-            path = path + "." + itemStack.getDurability();
+            // Spigot 1.13+ throws an exception if a 1.13+ plugin even *attempts* to do set data.
+            if (VersionUtil.PRE_FLATTENING && itemStack.getType().getData() == null) {
+                // Bukkit-bug: getDurability still contains the correct value, while
+                // getData().getData() is 0.
+                path = path + "." + itemStack.getDurability();
+            }
+
+            config.setProperty(path, price);
+            config.save();
         }
-
-        config.setProperty(path, price);
-        config.save();
     }
 
     public File getFile() {

@@ -4,7 +4,7 @@
 # +------------------------------------------------------+ #
 ############################################################
 
-# This is the config file for EssentialsX.
+# This is the config file for EssentialsXS.
 # This config was generated for version ${full.version}.
 # View the up-to-date default config at https://git.io/JG4z1
 
@@ -18,6 +18,37 @@
 # After editing the config, run '/essentials reload' in-game to apply the changes.
 
 # If you need help, you can join the EssentialsX community: https://essentialsx.net/community.html
+
+# Local storage bootstrap. Changing the backend requires a controlled server restart.
+# SQL storage requires an initial import and a controlled restart when local data exists.
+# XMPP, Discord and DiscordLink are excluded from this fork's SQL integration.
+backend:
+  type: yaml
+  data-set: default
+  configuration-profile: default
+  instance-id: essentialsxs-local
+  mysql:
+    engine: mysql
+    host: 127.0.0.1
+    port: 3306
+    database: essentialsxs
+    table-prefix: essxs_
+    credentials:
+      username-env: ESSENTIALSXS_DB_USER
+      password-env: ESSENTIALSXS_DB_PASSWORD
+    tls:
+      mode: disabled
+    pool:
+      maximum-size: 4
+      connection-timeout-ms: 10000
+    persistence:
+      flush-interval-ms: 1000
+      shutdown-timeout-seconds: 30
+      startup-timeout-seconds: 120
+      preload-max-bytes: 268435456
+  configuration:
+    source: backend
+    refresh: manual
 
 ############################################################
 # +------------------------------------------------------+ #

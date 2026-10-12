@@ -8,5 +8,5 @@ essentials {
 }
 
 dependencies {
-    api 'org.spigotmc:spigot-api:1.21.5-R0.1-SNAPSHOT'
+    api 'org.spigotmc:spigot-api:1.21.5-R0.1-20250617.151721-44'
 }

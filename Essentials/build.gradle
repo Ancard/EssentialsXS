@@ -3,7 +3,12 @@ plugins {
 }
 
 dependencies {
+    api project(':storage-api')
+    implementation(project(path: ':storage-jdbc', configuration: 'shadow')) { transitive = false }
     compileOnly('net.essentialsx.deps:VaultAPI:1.7') {
+        exclude group: "org.bukkit", module: "bukkit"
+    }
+    testImplementation('net.essentialsx.deps:VaultAPI:1.7') {
         exclude group: "org.bukkit", module: "bukkit"
     }
     compileOnly 'net.luckperms:api:5.3'
@@ -46,6 +51,8 @@ tasks.register('versionData', VersionDataTask) {
 
 shadowJar {
     dependencies {
+        include(project(':storage-api'))
+        include(project(path: ':storage-jdbc', configuration: 'shadow'))
         include (dependency('io.papermc:paperlib'))
         include (dependency('org.bstats:bstats-bukkit'))
         include (dependency('org.bstats:bstats-base'))

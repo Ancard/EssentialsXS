@@ -1,6 +1,7 @@
 package com.earth2me.essentials.config.serializers;
 
 import com.earth2me.essentials.config.entities.CommandCooldown;
+
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.spongepowered.configurate.ConfigurationNode;
 import org.spongepowered.configurate.serialize.SerializationException;
@@ -11,9 +12,14 @@ import java.util.regex.Pattern;
 
 public class CommandCooldownSerializer implements TypeSerializer<CommandCooldown> {
     @Override
-    public CommandCooldown deserialize(Type type, ConfigurationNode node) throws SerializationException {
+    public CommandCooldown deserialize(Type type, ConfigurationNode node)
+            throws SerializationException {
         try {
-            final Pattern pattern = node.node("pattern").get(Pattern.class);
+            final String expression = node.node("pattern").getString();
+            final Pattern pattern =
+                    expression == null
+                            ? null
+                            : Pattern.compile(expression, node.node("pattern-flags").getInt());
             if (node.node("value").isNull()) {
                 return null;
             }
@@ -22,13 +28,14 @@ public class CommandCooldownSerializer implements TypeSerializer<CommandCooldown
             cooldown.pattern(pattern);
             cooldown.value(longValue);
             return cooldown;
-        } catch (final SerializationException ignored) {
+        } catch (final IllegalArgumentException ignored) {
         }
         return null;
     }
 
     @Override
-    public void serialize(Type type, @Nullable CommandCooldown obj, ConfigurationNode node) throws SerializationException {
+    public void serialize(Type type, @Nullable CommandCooldown obj, ConfigurationNode node)
+            throws SerializationException {
         if (obj == null || obj.isIncomplete()) {
             node.raw(null);
             return;
@@ -36,5 +43,10 @@ public class CommandCooldownSerializer implements TypeSerializer<CommandCooldown
 
         node.node("pattern").set(Pattern.class, obj.pattern());
         node.node("value").set(Long.class, obj.value());
+        if (obj.pattern().flags() != 0) {
+            node.node("pattern-flags").set(Integer.class, obj.pattern().flags());
+        } else {
+            node.removeChild("pattern-flags");
+        }
     }
 }

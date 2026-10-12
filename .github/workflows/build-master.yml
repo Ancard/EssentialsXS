@@ -1,4 +1,4 @@
-name: Build EssentialsX
+name: Build EssentialsXS
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
     - name: Build with Gradle
       run: |
         chmod +x gradlew
-        ./gradlew build --stacktrace
+        ./gradlew :EssentialsX:build :EssentialsXChat:build :EssentialsXProtect:build :EssentialsXAntiBuild:build :EssentialsXSpawn:build :EssentialsXGeoIP:build :storage-jdbc:check --stacktrace
 
     - name: Publish JUnit report
       uses: mikepenz/action-junit-report@v5
@@ -43,62 +43,47 @@ jobs:
     - name: Archive plugin jars on GitHub
       uses: actions/upload-artifact@v7
       with:
-        name: EssentialsX plugin jars
+        name: EssentialsXS plugin jars
         path: jars/
 
-    - name: Upload EssentialsX jar
+    - name: Upload EssentialsXS jar
       uses: actions/upload-artifact@v7
       with:
-        path: jars/EssentialsX-*.jar
+        path: jars/EssentialsXS-*.jar
         archive: false
 
-    - name: Upload EssentialsXAntiBuild jar
+    - name: Upload EssentialsXSAntiBuild jar
       uses: actions/upload-artifact@v7
       with:
-        path: jars/EssentialsXAntiBuild-*.jar
+        path: jars/EssentialsXSAntiBuild-*.jar
         archive: false
 
-    - name: Upload EssentialsXChat jar
+    - name: Upload EssentialsXSChat jar
       uses: actions/upload-artifact@v7
       with:
-        path: jars/EssentialsXChat-*.jar
+        path: jars/EssentialsXSChat-*.jar
         archive: false
 
-    - name: Upload EssentialsXDiscord jar
+
+
+    - name: Upload EssentialsXSGeoIP jar
       uses: actions/upload-artifact@v7
       with:
-        path: jars/EssentialsXDiscord-*.jar
+        path: jars/EssentialsXSGeoIP-*.jar
         archive: false
 
-    - name: Upload EssentialsXDiscordLink jar
+    - name: Upload EssentialsXSProtect jar
       uses: actions/upload-artifact@v7
       with:
-        path: jars/EssentialsXDiscordLink-*.jar
+        path: jars/EssentialsXSProtect-*.jar
         archive: false
 
-    - name: Upload EssentialsXGeoIP jar
+    - name: Upload EssentialsXSSpawn jar
       uses: actions/upload-artifact@v7
       with:
-        path: jars/EssentialsXGeoIP-*.jar
+        path: jars/EssentialsXSSpawn-*.jar
         archive: false
 
-    - name: Upload EssentialsXProtect jar
-      uses: actions/upload-artifact@v7
-      with:
-        path: jars/EssentialsXProtect-*.jar
-        archive: false
-
-    - name: Upload EssentialsXSpawn jar
-      uses: actions/upload-artifact@v7
-      with:
-        path: jars/EssentialsXSpawn-*.jar
-        archive: false
-
-    - name: Upload EssentialsXXMPP jar
-      uses: actions/upload-artifact@v7
-      with:
-        path: jars/EssentialsXXMPP-*.jar
-        archive: false
 
     - name: Deploy to Maven repo
       if: ${{ success() && github.event_name == 'push' && github.repository == 'EssentialsX/Essentials' && github.ref == 'refs/heads/2.x' }}
@@ -113,12 +98,9 @@ jobs:
         mv Essentials/build/docs/javadoc/ javadocs/
         cp -r EssentialsAntiBuild/build/docs/javadoc/ javadocs/EssentialsAntiBuild/
         cp -r EssentialsChat/build/docs/javadoc/ javadocs/EssentialsChat/
-        cp -r EssentialsDiscord/build/docs/javadoc/ javadocs/EssentialsDiscord/
-        cp -r EssentialsDiscordLink/build/docs/javadoc/ javadocs/EssentialsDiscordLink/
         cp -r EssentialsGeoIP/build/docs/javadoc/ javadocs/EssentialsGeoIP/
         cp -r EssentialsProtect/build/docs/javadoc/ javadocs/EssentialsProtect/
         cp -r EssentialsSpawn/build/docs/javadoc/ javadocs/EssentialsSpawn/
-        cp -r EssentialsXMPP/build/docs/javadoc/ javadocs/EssentialsXMPP/
 
     - name: Archive Javadocs
       uses: actions/upload-artifact@v7

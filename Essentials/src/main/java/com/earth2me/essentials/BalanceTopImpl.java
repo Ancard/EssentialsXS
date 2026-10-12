@@ -2,6 +2,7 @@ package com.earth2me.essentials;
 
 import net.ess3.api.IEssentials;
 import net.essentialsx.api.v2.services.BalanceTop;
+
 import org.bukkit.plugin.ServicePriority;
 
 import java.math.BigDecimal;
@@ -22,7 +23,9 @@ public class BalanceTopImpl implements BalanceTop {
 
     public BalanceTopImpl(IEssentials ess) {
         this.ess = ess;
-        ess.getServer().getServicesManager().register(BalanceTop.class, this, ess, ServicePriority.Normal);
+        ess.getServer()
+                .getServicesManager()
+                .register(BalanceTop.class, this, ess, ServicePriority.Normal);
     }
 
     private void calculateBalanceTopMap() {
@@ -72,6 +75,98 @@ public class BalanceTopImpl implements BalanceTop {
             return cacheLock;
         }
         cacheLock = new CompletableFuture<>();
+        if (com.earth2me.essentials.config.storage.BackendSession.active()) {
+            final CompletableFuture<Void> result = cacheLock;
+            final Runnable capture =
+                    () -> {
+                        final Map<UUID, String> names = new java.util.HashMap<>();
+                        for (org.bukkit.entity.Player player : ess.getServer().getOnlinePlayers()) {
+                            final User user = ess.getUser(player);
+                            names.put(
+                                    player.getUniqueId(),
+                                    user.isHidden() ? user.getName() : user.getDisplayName());
+                        }
+                        final Map<String, String> documents =
+                                com.earth2me.essentials.config.storage.BackendSession.current()
+                                        .snapshot();
+                        final boolean includeNpcs = ess.getSettings().isNpcsInBalanceRanking();
+                        final BigDecimal starting = ess.getSettings().getStartingBalance();
+                        final int entryLimit = ess.getSettings().getBaltopEntryLimit();
+                        ess.runTaskAsynchronously(
+                                () -> {
+                                    try {
+                                        final List<Entry> entries = new java.util.ArrayList<>();
+                                        BigDecimal total = BigDecimal.ZERO;
+                                        for (Map.Entry<String, String> document :
+                                                documents.entrySet()) {
+                                            if (!document.getKey().startsWith("core/userdata/")) {
+                                                continue;
+                                            }
+                                            final org.spongepowered.configurate
+                                                            .CommentedConfigurationNode
+                                                    node =
+                                                            com.earth2me.essentials.config.storage
+                                                                    .BackendSession.decode(
+                                                                    document.getValue());
+                                            if (node.node("baltop-exempt").getBoolean()
+                                                    || (!includeNpcs
+                                                            && node.node("npc").getBoolean())) {
+                                                continue;
+                                            }
+                                            final UUID uuid =
+                                                    UUID.fromString(
+                                                            document.getKey()
+                                                                    .substring(
+                                                                            14,
+                                                                            document.getKey()
+                                                                                            .length()
+                                                                                    - 4));
+                                            final BigDecimal amount =
+                                                    new BigDecimal(
+                                                            node.node("money")
+                                                                    .getString(
+                                                                            starting
+                                                                                    .toPlainString()));
+                                            total = total.add(amount);
+                                            entries.add(
+                                                    new Entry(
+                                                            uuid,
+                                                            names.getOrDefault(
+                                                                    uuid,
+                                                                    node.node("last-account-name")
+                                                                            .getString()),
+                                                            amount));
+                                        }
+                                        entries.sort(
+                                                (a, b) -> b.getBalance().compareTo(a.getBalance()));
+                                        final LinkedHashMap<UUID, Entry> sorted =
+                                                new LinkedHashMap<>();
+                                        final int limit =
+                                                entryLimit < 0
+                                                        ? entries.size()
+                                                        : Math.min(entryLimit, entries.size());
+                                        for (int i = 0; i < limit; i++) {
+                                            final Entry entry = entries.get(i);
+                                            sorted.put(entry.getUuid(), entry);
+                                        }
+                                        topCache = sorted;
+                                        balanceTopTotal = total;
+                                        cacheAge = System.currentTimeMillis();
+                                        cacheLock = null;
+                                        result.complete(null);
+                                    } catch (Exception failure) {
+                                        cacheLock = null;
+                                        result.completeExceptionally(failure);
+                                    }
+                                });
+                    };
+            if (org.bukkit.Bukkit.isPrimaryThread()) {
+                capture.run();
+            } else {
+                ess.getServer().getScheduler().runTask(ess, capture);
+            }
+            return result;
+        }
         ess.runTaskAsynchronously(this::calculateBalanceTopMap);
         return cacheLock;
     }

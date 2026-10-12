@@ -20,57 +20,109 @@ public class CleanupCommand extends EssentialsTreeNode {
     }
 
     @Override
-    protected void run(final CommandSource sender, final String commandLabel, final String[] args) throws Exception {
+    protected void run(final CommandSource sender, final String commandLabel, final String[] args)
+            throws Exception {
         if (args.length < 1 || !NumberUtil.isInt(args[0])) {
-            sender.sendMessage("This sub-command will delete users who haven't logged in in the last <days> days.");
-            sender.sendMessage("Optional parameters define the minimum amount required to prevent deletion.");
-            sender.sendMessage("Unless you define larger default values, this command will ignore people who have more than 0 money/homes.");
+            sender.sendMessage(
+                    "This sub-command will delete users who haven't logged in in the last <days>"
+                        + " days.");
+            sender.sendMessage(
+                    "Optional parameters define the minimum amount required to prevent deletion.");
+            sender.sendMessage(
+                    "Unless you define larger default values, this command will ignore people who"
+                        + " have more than 0 money/homes.");
             throw new Exception("/" + commandLabel + " cleanup <days> [money] [homes]");
         }
 
         sender.sendTl("cleaning");
 
         final long daysArg = Long.parseLong(args[0]);
-        final double moneyArg = args.length >= 2 ? FloatUtil.parseDouble(args[1].replaceAll("[^0-9.]", "")) : 0;
-        final int homesArg = args.length >= 3 && NumberUtil.isInt(args[2]) ? Integer.parseInt(args[2]) : 0;
+        final double moneyArg =
+                args.length >= 2 ? FloatUtil.parseDouble(args[1].replaceAll("[^0-9.]", "")) : 0;
+        final int homesArg =
+                args.length >= 3 && NumberUtil.isInt(args[2]) ? Integer.parseInt(args[2]) : 0;
 
-        ess.runTaskAsynchronously(() -> {
-            final long currTime = System.currentTimeMillis();
-            for (final UUID u : ess.getUsers().getAllUserUUIDs()) {
-                final User user = ess.getUsers().loadUncachedUser(u);
-                if (user == null) {
-                    continue;
-                }
+        if (com.earth2me.essentials.config.storage.BackendSession.active()) {
+            cleanBatch(
+                    sender,
+                    new java.util.ArrayList<>(ess.getUsers().getAllUserUUIDs()).iterator(),
+                    System.currentTimeMillis(),
+                    daysArg,
+                    moneyArg,
+                    homesArg);
+            return;
+        }
 
-                long lastLog = user.getLastLogout();
-                if (lastLog == 0) {
-                    lastLog = user.getLastLogin();
-                }
-                if (lastLog == 0) {
-                    user.setLastLogin(currTime);
-                }
+        ess.runTaskAsynchronously(
+                () -> {
+                    final long currTime = System.currentTimeMillis();
+                    for (final UUID u : ess.getUsers().getAllUserUUIDs()) {
+                        cleanUser(u, currTime, daysArg, moneyArg, homesArg);
+                    }
+                    sender.sendTl("cleaned");
+                });
+    }
 
-                if (user.isNPC()) {
-                    continue;
-                }
+    private void cleanUser(UUID u, long currTime, long daysArg, double moneyArg, int homesArg) {
+        final User user = ess.getUsers().loadUncachedUser(u);
+        if (user == null) {
+            return;
+        }
 
-                final long timeDiff = currTime - lastLog;
-                final long milliDays = daysArg * 24L * 60L * 60L * 1000L;
-                final int homeCount = user.getHomes().size();
-                final double moneyCount = user.getMoney().doubleValue();
+        long lastLog = user.getLastLogout();
+        if (lastLog == 0) {
+            lastLog = user.getLastLogin();
+        }
+        if (lastLog == 0) {
+            user.setLastLogin(currTime);
+        }
 
-                if (lastLog == 0 || timeDiff < milliDays || homeCount > homesArg || moneyCount > moneyArg) {
-                    continue;
-                }
+        if (user.isNPC()) {
+            return;
+        }
 
-                if (ess.getSettings().isDebug()) {
-                    ess.getLogger().info("Deleting user: " + user.getName() + " Money: " + moneyCount + " Homes: " + homeCount + " Last seen: " + DateUtil.formatDateDiff(lastLog));
-                }
+        final long timeDiff = currTime - lastLog;
+        final long milliDays = daysArg * 24L * 60L * 60L * 1000L;
+        final int homeCount = user.getHomes().size();
+        final double moneyCount = user.getMoney().doubleValue();
 
-                user.reset();
-            }
+        if (lastLog == 0 || timeDiff < milliDays || homeCount > homesArg || moneyCount > moneyArg) {
+            return;
+        }
+
+        if (ess.getSettings().isDebug()) {
+            ess.getLogger()
+                    .info(
+                            "Deleting user: "
+                                    + user.getName()
+                                    + " Money: "
+                                    + moneyCount
+                                    + " Homes: "
+                                    + homeCount
+                                    + " Last seen: "
+                                    + DateUtil.formatDateDiff(lastLog));
+        }
+
+        user.reset();
+    }
+
+    private void cleanBatch(
+            CommandSource sender,
+            java.util.Iterator<UUID> users,
+            long currTime,
+            long days,
+            double money,
+            int homes) {
+        for (int count = 0; count < 50 && users.hasNext(); count++) {
+            cleanUser(users.next(), currTime, days, money, homes);
+        }
+        if (users.hasNext()) {
+            ess.getServer()
+                    .getScheduler()
+                    .runTask(ess, () -> cleanBatch(sender, users, currTime, days, money, homes));
+        } else {
             sender.sendTl("cleaned");
-        });
+        }
     }
 
     @Override

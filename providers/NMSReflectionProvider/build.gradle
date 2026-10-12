@@ -6,7 +6,7 @@ dependencies {
     implementation(project(':providers:BaseProviders')) {
         exclude(module: 'spigot-api')
     }
-    api 'org.bukkit:bukkit:1.12.2-R0.1-SNAPSHOT'
+    api 'org.bukkit:bukkit:1.12.2-R0.1-20180712.012114-155'
 }
 
 essentials {

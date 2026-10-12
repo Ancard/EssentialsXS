@@ -4,7 +4,9 @@ import com.earth2me.essentials.IConf;
 import com.earth2me.essentials.IEssentialsModule;
 import com.earth2me.essentials.config.EssentialsConfiguration;
 import com.earth2me.essentials.config.entities.LazyLocation;
+
 import net.ess3.api.IEssentials;
+
 import org.bukkit.Location;
 import org.bukkit.World;
 
@@ -35,11 +37,14 @@ public class SpawnStorage implements IEssentialsModule, IConf {
     }
 
     void setSpawn(final Location loc, String group) {
-        group = group.toLowerCase(Locale.ENGLISH);
-        synchronized (spawns) {
-            spawns.put(group, LazyLocation.fromLocation(loc));
-            config.setProperty("spawns." + group, loc);
-            config.save();
+        synchronized (com.earth2me.essentials.config.storage.BackendSession.mutationLock()) {
+            config.ensureWritable();
+            group = group.toLowerCase(Locale.ENGLISH);
+            synchronized (spawns) {
+                spawns.put(group, LazyLocation.fromLocation(loc));
+                config.setProperty("spawns." + group, loc);
+                config.save();
+            }
         }
     }
 
